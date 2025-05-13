@@ -1,0 +1,40 @@
+publiccodeYmlVersion: "0.4"
+
+name: integration_jupyterhub
+url: "https://github.com/SUNET/nextcloud-integration_oidc"
+platforms:
+  - web
+
+categories:
+  - web-collaboration
+
+developmentStatus: development
+
+softwareType: "addon"
+
+description:
+  en:
+    shortDescription: >
+      This app provides an integration point between
+      Nextcloud and JupyterHub.
+
+    longDescription: >
+      This app provides an integration point between
+      Nextcloud and JupyterHub.
+
+    features:
+      - JupyterHub Integration
+
+legal:
+  license: AGPL-3.0-or-later
+
+maintenance:
+  type: "community"
+
+  contacts:
+    - name: Micke Nordin <kano@sunet.se>
+
+localisation:
+  localisationReady: true
+  availableLanguages:
+    - en
