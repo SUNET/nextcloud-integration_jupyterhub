@@ -1,7 +1,7 @@
 publiccodeYmlVersion: "0.4"
 
 name: integration_jupyterhub
-url: "https://github.com/SUNET/nextcloud-integration_oidc"
+url: "https://github.com/SUNET/nextcloud-integration_jupyterhub"
 platforms:
   - web
 
