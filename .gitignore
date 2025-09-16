@@ -5,7 +5,7 @@
 integration_jupyterhub/vendor/
 integration_jupyterhub/js/*
 integration_jupyterhub/node_modules/
-/build/
-node_modules/
+integration_jupyterhub/build/
+integration_jupyterhub/sign/
 /.php_cs.cache
 js/*hot-update.*

@@ -1,19 +1,23 @@
 /**
- * SPDX-FileCopyrightText: 2018 John Molakvoæ <skjnldsv@protonmail.com>
+ * SPDX-FileCopyrightText: 2025 Micke Nordin <kano@sunet.se>
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 import { generateFilePath } from '@nextcloud/router'
 
-import Vue from 'vue'
+import { createApp} from 'vue'
 import App from './App'
 
 // eslint-disable-next-line
 __webpack_public_path__ = generateFilePath(appName, '', 'js/')
 
-Vue.mixin({ methods: { t, n } })
+const app = createApp(App)
 
-export default new Vue({
-	el: '#content',
-	render: h => h(App),
+app.mixin({
+    methods: {
+        t,
+        n
+    }
 })
+
+app.mount('#content')

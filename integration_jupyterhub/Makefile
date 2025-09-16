@@ -1,7 +1,7 @@
 app_name=integration_jupyterhub
 cert_dir=$(HOME)/.nextcloud/certificates
-get_version = $(shell  grep /version $(app_name)/appinfo/info.xml | sed 's/.*\([0-9]\.[0-9]\.[0-9]\).*/\1/')
-project_dir=$(CURDIR)/$(app_name)
+get_version = $(shell  grep /version appinfo/info.xml | sed 's/.*\([0-9]\.[0-9]\.[0-9]\).*/\1/')
+project_dir=$(CURDIR)
 build_dir=$(CURDIR)/build/artifacts
 sign_dir=$(build_dir)/sign
 package_name=$(app_name)
@@ -38,20 +38,20 @@ appstore: sign
 
 .PHONY: composer
 composer:
-	cd $(project_dir) && composer install --prefer-dist
+	composer install --prefer-dist
 
 # Installs npm dependencies
 .PHONY: npm
 npm:
-	cd $(project_dir) && npm install
-	cd $(project_dir) && npm run build
+	npm install
+	npm run build
 
 # Same as clean but also removes dependencies installed by composer, bower and
 # npm
 .PHONY: distclean
 distclean: clean
-	rm -rf $(project_dir)/vendor
-	rm -rf $(project_dir)/node_modules
+	rm -rf vendor/
+	rm -rf node_modules/
 clean:
 	rm -rf $(build_dir)
 
@@ -74,6 +74,6 @@ package: clean npm composer
 	--exclude=.travis.yml \
 	--exclude=/Makefile \
 	--exclude=.drone.yml \
-	$(project_dir)/ $(sign_dir)/$(app_name)
+	./ $(sign_dir)/$(app_name)
 	tar -czf $(build_dir)/$(app_name)-$(version).tar.gz \
 		-C $(sign_dir) $(app_name)
