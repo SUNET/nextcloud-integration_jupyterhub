@@ -7,7 +7,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - main
       - stable*
 
 env:
@@ -21,7 +21,7 @@ jobs:
 
     strategy:
       matrix:
-        php-versions: ['7.4', '8.0', '8.1']
+        php-versions: ['8.2']
         server-versions: ['master']
 
     services:
@@ -45,14 +45,14 @@ jobs:
           echo "SELECT @@sql_mode;" | mysql -h 127.0.0.1 -P 4444 -u root -prootpassword
 
       - name: Checkout server
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
           repository: nextcloud/server
           ref: ${{ matrix.server-versions }}
 
       - name: Checkout app
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: apps/${{ env.APP_NAME }}
 
@@ -65,7 +65,7 @@ jobs:
           coverage: none
 
       - name: Set up PHPUnit
-        working-directory: apps/${{ env.APP_NAME }}
+        working-directory: apps/${{ env.APP_NAME }}/integration_jupyterhub
         run: composer i
 
       - name: Set up Nextcloud
@@ -78,9 +78,9 @@ jobs:
 
       - name: Check PHPUnit config file existence
         id: check_phpunit
-        uses: andstor/file-existence-action@v1
+        uses: andstor/file-existence-action@v3
         with:
-          files: apps/${{ env.APP_NAME }}/${{ env.PHPUNIT_CONFIG }}
+          files: apps/${{ env.APP_NAME }}/integration_jupyterhub/${{ env.PHPUNIT_CONFIG }}
 
       - name: Run Nextcloud
         run: php -S localhost:8080 &
@@ -88,19 +88,19 @@ jobs:
       - name: PHPUnit
         # Only run if phpunit config file exists
         if: steps.check_phpunit.outputs.files_exists == 'true'
-        working-directory: apps/${{ env.APP_NAME }}
+        working-directory: apps/${{ env.APP_NAME }}/integration_jupyterhub
         run: ./vendor/phpunit/phpunit/phpunit -c ${{ env.PHPUNIT_CONFIG }}
 
       - name: Check PHPUnit integration config file existence
         id: check_integration
-        uses: andstor/file-existence-action@v1
+        uses: andstor/file-existence-action@v3
         with:
-          files: apps/${{ env.APP_NAME }}/${{ env.PHPUNIT_INTEGRATION_CONFIG }}
+          files: apps/${{ env.APP_NAME }}/integration_jupyterhub/${{ env.PHPUNIT_INTEGRATION_CONFIG }}
 
       - name: PHPUnit integration
         # Only run if phpunit integration config file exists
         if: steps.check_integration.outputs.files_exists == 'true'
-        working-directory: apps/${{ env.APP_NAME }}
+        working-directory: apps/${{ env.APP_NAME }}/integration_jupyterhub
         run: ./vendor/phpunit/phpunit/phpunit -c ${{ env.PHPUNIT_INTEGRATION_CONFIG }}
 
   summary:
@@ -114,4 +114,3 @@ jobs:
     steps:
       - name: Summary status
         run: if ${{ needs.phpunit-mysql.result != 'success' }}; then exit 1; fi
-

@@ -11,7 +11,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - main
       - stable*
 
 jobs:
@@ -19,13 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        php-versions: ["7.4", "8.0", "8.1"]
+        php-versions: ["8.1", "8.2", "8.3"]
 
     name: php-lint
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up php ${{ matrix.php-versions }}
         uses: shivammathur/setup-php@v2
@@ -35,6 +35,7 @@ jobs:
 
       - name: Lint
         run: composer run lint
+        working-directory: integration_jupyterhub
 
   summary:
     runs-on: ubuntu-latest
@@ -47,4 +48,3 @@ jobs:
     steps:
       - name: Summary status
         run: if ${{ needs.php-lint.result != 'success' && needs.php-lint.result != 'skipped' }}; then exit 1; fi
-

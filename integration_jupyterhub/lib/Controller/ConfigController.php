@@ -8,11 +8,11 @@ namespace OCA\Jupyter\Controller;
 
 use OCA\Jupyter\AppInfo\Application;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Http\DataResponse;
 use OCP\IConfig;
 use OCP\IRequest;
 
-class PageController extends Controller
+class ConfigController extends Controller
 {
   private IConfig $config;
 
@@ -24,17 +24,10 @@ class PageController extends Controller
     $this->config = $config;
   }
 
-  /**
-   * @NoAdminRequired
-   * @NoCSRFRequired
-   */
-  public function index(): TemplateResponse
+  public function update(string $jupyter_url): DataResponse
   {
-    $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
-    $params = [
-      'jupyter_url' => $jupyterUrl . '/hub/home',
-    ];
-
-    return new TemplateResponse(Application::APP_ID, 'main', $params);
+    $jupyter_url = rtrim($jupyter_url, '/');
+    $this->config->setAppValue(Application::APP_ID, 'jupyter_url', $jupyter_url);
+    return new DataResponse(['status' => 'success']);
   }
 }

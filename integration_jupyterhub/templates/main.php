@@ -5,5 +5,5 @@ declare(strict_types=1);
 
 ?>
 <div id="content">
-	<iframe src="<?php print_unescaped($_["jupyter_url"]); ?>" width="100%"></iframe>
+	<iframe src="<?php p($_['jupyter_url']); ?>" width="100%"></iframe>
 </div>

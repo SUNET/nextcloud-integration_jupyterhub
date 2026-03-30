@@ -11,7 +11,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - main
       - stable*
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     name: info.xml lint
     steps:
       - name: Checkout
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
 
       - name: Download schema
         run: wget https://raw.githubusercontent.com/nextcloud/appstore/master/nextcloudappstore/api/v1/release/info.xsd
@@ -29,5 +29,5 @@ jobs:
       - name: Lint info.xml
         uses: ChristophWurst/xmllint-action@v1
         with:
-          xml-file: ./appinfo/info.xml
+          xml-file: ./integration_jupyterhub/appinfo/info.xml
           xml-schema-file: ./info.xsd

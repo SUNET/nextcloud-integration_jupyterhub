@@ -1,55 +1,25 @@
 {
-  "name": "nextcloud/jupyter",
-  "description": "Integrate Jupyther Hub into Nextcloud",
+  "name": "sunet/integration_jupyterhub",
+  "description": "Integrate JupyterHub into Nextcloud",
   "type": "project",
   "license": "AGPL-3.0-or-later",
+  "autoload": {
+    "psr-4": {
+      "OCA\\Jupyter\\": "lib/"
+    }
+  },
   "authors": [
     {
-      "name": "Mikael Nordin"
+      "name": "Mikael Nordin",
+      "email": "kano@sunet.se"
     }
   ],
   "require-dev": {
-    "phpunit/phpunit": "^9",
-    "sabre/dav": "^4.1",
-    "sabre/xml": "^2.2",
-    "symfony/event-dispatcher": "^5.3.11",
-    "christophwurst/nextcloud": "dev-master@dev",
-    "psalm/phar": "^4.10",
     "nextcloud/coding-standard": "^1.0"
   },
   "scripts": {
     "lint": "find . -name \\*.php -not -path './vendor/*' -print0 | xargs -0 -n1 php -l",
     "cs:check": "php-cs-fixer fix --dry-run --diff",
-    "cs:fix": "php-cs-fixer fix",
-    "psalm": "psalm.phar --threads=1",
-    "psalm:update-baseline": "psalm.phar --threads=1 --update-baseline",
-    "psalm:update-baseline:force": "psalm.phar --threads=1 --update-baseline --set-baseline=tests/psalm-baseline.xml",
-    "psalm:clear": "psalm.phar --clear-cache && psalm --clear-global-cache",
-    "psalm:fix": "psalm.phar --alter --issues=InvalidReturnType,InvalidNullableReturnType,MissingParamType,InvalidFalsableReturnType"
-  },
-  "config": {
-    "allow-plugins": {
-      "composer/package-versions-deprecated": true
-    },
-    "platform": {
-      "ext-ctype": "8.2.18",
-      "ext-curl": "8.2.18",
-      "ext-date": "8.2.18",
-      "ext-dom": "20031129",
-      "ext-iconv": "8.2.18",
-      "ext-json": "8.2.18",
-      "ext-libxml": "8.2.18",
-      "ext-mbstring": "8.2.18",
-      "ext-pcre": "8.2.18",
-      "ext-phar": "8.2.18",
-      "ext-simplexml": "8.2.18",
-      "ext-spl": "8.2.18",
-      "ext-tokenizer": "8.2.18",
-      "ext-xml": "8.2.18",
-      "ext-xmlreader": "8.2.18",
-      "ext-xmlwriter": "8.2.18",
-      "lib-libxml": "2.9.14",
-      "php": "8.2.18"
-    }
+    "cs:fix": "php-cs-fixer fix"
   }
 }

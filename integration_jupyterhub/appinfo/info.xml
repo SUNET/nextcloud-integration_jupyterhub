@@ -7,9 +7,9 @@
     -->
   <id>integration_jupyterhub</id>
   <name>JupyterHub Integration</name>
-  <summary>Integrate Jupyther Hub into Nextcloud</summary>
+  <summary>Integrate JupyterHub into Nextcloud</summary>
   <description>
-    <![CDATA[Integrate Jupyther Hub into Nextcloud]]>
+    <![CDATA[Integrate JupyterHub into Nextcloud]]>
   </description>
   <version>0.1.4</version>
   <licence>agpl</licence>
@@ -18,14 +18,14 @@
   <category>integration</category>
   <bugs>https://github.com/SUNET/nextcloud-jupyter/issues</bugs>
   <dependencies>
-    <nextcloud min-version="24" max-version="32" />
+    <nextcloud min-version="28" max-version="33" />
   </dependencies>
-    <commands>
-        <command>OCA\Jupyter\Commands\GetUrl</command>
-        <command>OCA\Jupyter\Commands\SetUrl</command>
-    </commands>
+  <commands>
+    <command>OCA\Jupyter\Commands\GetUrl</command>
+    <command>OCA\Jupyter\Commands\SetUrl</command>
+  </commands>
   <settings>
-    <admin>OCA\Jupyter\Panels\AdminPanel</admin>
+    <admin>OCA\Jupyter\Settings\AdminSettings</admin>
   </settings>
   <navigations>
     <navigation>
