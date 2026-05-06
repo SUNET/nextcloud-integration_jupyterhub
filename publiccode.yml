@@ -1,4 +1,4 @@
-publiccodeYmlVersion: "0.4"
+publiccodeYmlVersion: "0"
 
 name: integration_jupyterhub
 url: "https://github.com/SUNET/nextcloud-integration_jupyterhub"
@@ -19,8 +19,11 @@ description:
       Nextcloud and JupyterHub.
 
     longDescription: >
-      This app provides an integration point between
-      Nextcloud and JupyterHub.
+      This Nextcloud app provides an integration point between Nextcloud
+      and JupyterHub. It registers an OCC command and an admin settings
+      page to configure the JupyterHub URL, and uses an OAuth2 client
+      configured in Nextcloud so users can authenticate against JupyterHub
+      from the Nextcloud instance.
 
     features:
       - JupyterHub Integration
