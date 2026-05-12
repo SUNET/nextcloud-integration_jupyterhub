@@ -38,8 +38,7 @@ jobs:
     steps:
       - name: Set app env
         run: |
-          # Split and keep last
-          echo "APP_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+          echo "APP_NAME=integration_jupyterhub" >> $GITHUB_ENV
 
       - name: Checkout server
         uses: actions/checkout@v4
@@ -51,7 +50,10 @@ jobs:
       - name: Checkout app
         uses: actions/checkout@v4
         with:
-          path: apps/${{ env.APP_NAME }}
+          path: source
+
+      - name: Move app into apps directory
+        run: mv source/${{ env.APP_NAME }} apps/${{ env.APP_NAME }}
 
       - name: Set up php ${{ matrix.php-versions }}
         uses: shivammathur/setup-php@v2
@@ -62,7 +64,7 @@ jobs:
           coverage: none
 
       - name: Set up PHPUnit
-        working-directory: apps/${{ env.APP_NAME }}/integration_jupyterhub
+        working-directory: apps/${{ env.APP_NAME }}
         run: composer i
 
       - name: Set up Nextcloud
@@ -77,19 +79,19 @@ jobs:
         id: check_phpunit
         uses: andstor/file-existence-action@v3
         with:
-          files: apps/${{ env.APP_NAME }}/integration_jupyterhub/${{ env.PHPUNIT_CONFIG }}
+          files: apps/${{ env.APP_NAME }}/${{ env.PHPUNIT_CONFIG }}
 
       - name: PHPUnit
         # Only run if phpunit config file exists
         if: steps.check_phpunit.outputs.files_exists == 'true'
-        working-directory: apps/${{ env.APP_NAME }}/integration_jupyterhub
+        working-directory: apps/${{ env.APP_NAME }}
         run: ./vendor/phpunit/phpunit/phpunit -c ${{ env.PHPUNIT_CONFIG }}
 
       - name: Check PHPUnit integration config file existence
         id: check_integration
         uses: andstor/file-existence-action@v3
         with:
-          files: apps/${{ env.APP_NAME }}/integration_jupyterhub/${{ env.PHPUNIT_INTEGRATION_CONFIG }}
+          files: apps/${{ env.APP_NAME }}/${{ env.PHPUNIT_INTEGRATION_CONFIG }}
 
       - name: Run Nextcloud
         # Only run if phpunit integration config file exists
@@ -99,7 +101,7 @@ jobs:
       - name: PHPUnit integration
         # Only run if phpunit integration config file exists
         if: steps.check_integration.outputs.files_exists == 'true'
-        working-directory: apps/${{ env.APP_NAME }}/integration_jupyterhub
+        working-directory: apps/${{ env.APP_NAME }}
         run: ./vendor/phpunit/phpunit/phpunit -c ${{ env.PHPUNIT_INTEGRATION_CONFIG }}
 
   summary:
