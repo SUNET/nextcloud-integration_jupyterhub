@@ -42,6 +42,14 @@ class CSPListener implements IEventListener
     $csp->addAllowedConnectDomain($origin);
     $csp->addAllowedScriptDomain($origin);
     $csp->addAllowedFrameDomain($origin);
+    // The JupyterHub iframe runs OAuth against this Nextcloud, which
+    // means the iframe has to navigate to /index.php/apps/oauth2/authorize
+    // on our own origin during sign-in. Without 'self' in frame-src,
+    // the browser blocks that redirect with a CSP violation. NC's
+    // CSP defaults to 'self' for most directives, but the moment we
+    // create our own ContentSecurityPolicy we're explicitly defining
+    // the frame-src list — so 'self' has to be re-added explicitly.
+    $csp->addAllowedFrameDomain('\'self\'');
 
     $event->addPolicy($csp);
   }
