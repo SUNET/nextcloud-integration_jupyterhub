@@ -184,16 +184,15 @@ class WebappCloudFederationProvider implements ICloudFederationProvider
   }
 
   /**
-   * Decode the protocol field into a name-keyed map of options.
+   * Decode the protocol field into a name-keyed map of entries.
    *
    * Accepts the multi-protocol shape used by {@see WebappCloudFederationShare}:
    *
-   *     {name: "multi", options: [
-   *       {name: "webdav", options: {...}},
-   *       {name: "webapp", options: {...}},
-   *     ]}
+   *     {name: "multi", webdav: {...}, webapp: {...}}
    *
-   * Also tolerates the legacy single-protocol shape `{name, options}`.
+   * Also tolerates:
+   *   - the new exchange-token webdav shape `{name: "webdav", webdav: {...}}`
+   *   - the legacy single-protocol shape `{name: "webdav", options: {...}}`
    *
    * @param array<mixed> $protocol
    * @return array<string, array<string, mixed>>
@@ -201,14 +200,16 @@ class WebappCloudFederationProvider implements ICloudFederationProvider
   private function unpackMultiProtocol(array $protocol): array
   {
     $entries = [];
-    if (($protocol['name'] ?? null) === 'multi' && is_array($protocol['options'] ?? null)) {
-      foreach ($protocol['options'] as $entry) {
-        if (is_array($entry) && isset($entry['name']) && is_array($entry['options'] ?? null)) {
-          $entries[(string)$entry['name']] = $entry['options'];
-        }
+    foreach ($protocol as $key => $value) {
+      if ($key === 'name' || !is_array($value)) {
+        continue;
       }
+      $entries[(string)$key] = $value;
+    }
+    if ($entries !== []) {
       return $entries;
     }
+    // Legacy single-protocol fallback.
     if (isset($protocol['name']) && is_array($protocol['options'] ?? null)) {
       $entries[(string)$protocol['name']] = $protocol['options'];
     }

@@ -12,23 +12,36 @@ use OCA\Jupyter\AppInfo\Application;
 /**
  * OCM federation share of resource type {@see Application::WEBAPP_RESOURCE_TYPE}.
  *
- * Extends Nextcloud's {@see CloudFederationShare} (which already implements
- * {@see \OCP\Federation\ICloudFederationShare}) so we reuse the serializer
- * and wire format. Specialises it for the OCM webapp draft:
+ * Extends Nextcloud's {@see CloudFederationShare} (which already
+ * implements {@see \OCP\Federation\ICloudFederationShare}) so we reuse
+ * the serializer and wire format. Specialises it for the OCM webapp
+ * draft:
  *
  *  - Forces resourceType = "webapp".
  *  - Replaces the parent's single-protocol setter with a multi-protocol
- *    representation: the share's `protocol` field is a list of
- *    `{name, options}` entries, allowing peers to advertise webdav and
- *    webapp alongside each other.
+ *    envelope:
+ *
+ *        protocol:
+ *          name: "multi"
+ *          webdav: {sharedSecret, permissions, ...}
+ *          webapp: {uri, sharedSecret, target, permissions, ...}
+ *
+ *    Each protocol's options are a flat object under the protocol-name
+ *    key — `options` is deprecated in the new shape NC already uses
+ *    for exchange-token webdav. The webapp `target` field is a list of
+ *    view targets the sender supports — receiver picks one.
  *
  * See https://github.com/cs3org/OCM-API/blob/develop/work/webapps/webapp-sharing.md
  */
 class WebappCloudFederationShare extends CloudFederationShare
 {
-  public const VIEW_IFRAME = 'iframe';
-  public const VIEW_REDIRECT = 'redirect';
-  public const VIEW_NEW_WINDOW = 'new-window';
+  public const TARGET_IFRAME = 'iframe';
+  public const TARGET_REDIRECT = 'redirect';
+  /**
+   * `target=_blank` semantics — opens in a new window/tab.
+   * Wire value is `blank` per the OCM webapp draft.
+   */
+  public const TARGET_BLANK = 'blank';
 
   public function __construct(
     string $shareWith = '',
@@ -53,120 +66,104 @@ class WebappCloudFederationShare extends CloudFederationShare
       $shareType,
       Application::WEBAPP_RESOURCE_TYPE,
     );
-    // The parent constructor wires up a webdav protocol entry by default;
-    // we own the protocol field for webapp shares, so start from scratch.
-    $this->setProtocol(['name' => 'multi', 'options' => []]);
+    // Parent constructor wires a default single-protocol webdav entry.
+    // We own the protocol field for webapp shares — start clean.
+    $this->setProtocol(['name' => 'multi']);
   }
 
   /**
-   * Add a webapp protocol entry to the share. Idempotent: replaces any
-   * existing webapp entry in place.
+   * Add a webapp protocol entry. Idempotent: replaces the existing
+   * `webapp` block in place.
    *
+   * @param list<string>|string $target one or more view targets the
+   *                                    sender supports (iframe /
+   *                                    redirect / new-window). Receiver
+   *                                    picks one when rendering.
    * @param list<string> $permissions
    */
   public function setWebappProtocol(
     string $uri,
     string $sharedSecret,
-    string $viewMode,
+    array|string $target,
     array $permissions = ['read'],
     ?string $appName = null,
     ?string $mimeType = null,
   ): void {
-    $options = [
+    $entry = [
       'uri' => $uri,
       'sharedSecret' => $sharedSecret,
-      'viewMode' => $this->normaliseViewMode($viewMode),
+      'target' => $this->normaliseTargets($target),
       'permissions' => $permissions,
     ];
     if ($appName !== null) {
-      $options['name'] = $appName;
+      $entry['name'] = $appName;
     }
     if ($mimeType !== null) {
-      $options['mimeType'] = $mimeType;
+      $entry['mimeType'] = $mimeType;
     }
-    $this->upsertProtocolEntry(Application::WEBAPP_RESOURCE_TYPE, $options);
+    $this->upsertProtocolEntry(Application::WEBAPP_RESOURCE_TYPE, $entry);
   }
 
   /**
    * Add a webdav protocol entry alongside webapp so the receiver can
-   * still browse the underlying directory through standard federated
-   * sharing. Mirrors the shape NC's CloudFederationShare uses for
-   * resourceType=file.
+   * mount and browse the underlying directory through standard
+   * federated sharing.
+   *
+   * @param list<string> $permissions
    */
-  public function setWebdavProtocol(string $sharedSecret, string $permissionsXml = '{http://open-cloud-mesh.org/ns}share-permissions'): void
-  {
+  public function setWebdavProtocol(
+    string $sharedSecret,
+    array $permissions = ['{http://open-cloud-mesh.org/ns}share-permissions'],
+  ): void {
     $this->upsertProtocolEntry('webdav', [
       'sharedSecret' => $sharedSecret,
-      'permissions' => $permissionsXml,
+      'permissions' => $permissions,
     ]);
   }
 
   /**
-   * Return the options block of the webapp entry, or null if none set.
+   * Return the webapp protocol entry's data, or null if none set.
    *
    * @return array<string, mixed>|null
    */
-  public function getWebappOptions(): ?array
+  public function getWebappEntry(): ?array
   {
-    foreach ($this->protocolEntries() as $entry) {
-      if (($entry['name'] ?? null) === Application::WEBAPP_RESOURCE_TYPE && is_array($entry['options'] ?? null)) {
-        return $entry['options'];
-      }
-    }
-    return null;
+    $protocol = $this->getProtocol();
+    $entry = $protocol[Application::WEBAPP_RESOURCE_TYPE] ?? null;
+    return is_array($entry) ? $entry : null;
   }
 
   /**
-   * Upsert one named protocol entry into the multi-protocol options list.
+   * Upsert one named protocol entry into the multi-protocol envelope.
    *
-   * @param array<string, mixed> $options
+   * @param array<string, mixed> $entry
    */
-  private function upsertProtocolEntry(string $name, array $options): void
+  private function upsertProtocolEntry(string $name, array $entry): void
   {
     $protocol = $this->getProtocol();
-    $entries = $this->protocolEntries();
-    $replaced = false;
-    foreach ($entries as $i => $entry) {
-      if (($entry['name'] ?? null) === $name) {
-        $entries[$i] = ['name' => $name, 'options' => $options];
-        $replaced = true;
-        break;
-      }
-    }
-    if (!$replaced) {
-      $entries[] = ['name' => $name, 'options' => $options];
-    }
-    $this->setProtocol(['name' => 'multi', 'options' => $entries]);
+    $protocol['name'] = 'multi';
+    $protocol[$name] = $entry;
+    $this->setProtocol($protocol);
   }
 
   /**
-   * Normalise the entries list out of whatever shape the parent's
-   * setProtocol() last accepted (we always write the `multi` shape, but
-   * be forgiving on read in case a subclass or test set a flat entry).
-   *
-   * @return list<array{name:string, options:array<string, mixed>}>
+   * @param list<string>|string $target
+   * @return list<string>
    */
-  private function protocolEntries(): array
+  private function normaliseTargets(array|string $target): array
   {
-    $protocol = $this->getProtocol();
-    if (($protocol['name'] ?? null) === 'multi' && is_array($protocol['options'] ?? null)) {
-      return array_values(array_filter(
-        $protocol['options'],
-        fn ($e) => is_array($e) && isset($e['name']) && is_array($e['options'] ?? null),
-      ));
+    $raw = is_array($target) ? $target : [$target];
+    $out = [];
+    foreach ($raw as $entry) {
+      $value = match (strtolower((string)$entry)) {
+        self::TARGET_REDIRECT => self::TARGET_REDIRECT,
+        self::TARGET_BLANK, 'new-window', 'newwindow', 'new_window' => self::TARGET_BLANK,
+        default => self::TARGET_IFRAME,
+      };
+      if (!in_array($value, $out, true)) {
+        $out[] = $value;
+      }
     }
-    if (isset($protocol['name']) && is_array($protocol['options'] ?? null)) {
-      return [['name' => $protocol['name'], 'options' => $protocol['options']]];
-    }
-    return [];
-  }
-
-  private function normaliseViewMode(string $mode): string
-  {
-    return match (strtolower($mode)) {
-      self::VIEW_REDIRECT => self::VIEW_REDIRECT,
-      'new-window', 'newwindow', 'new_window' => self::VIEW_NEW_WINDOW,
-      default => self::VIEW_IFRAME,
-    };
+    return $out === [] ? [self::TARGET_IFRAME] : $out;
   }
 }

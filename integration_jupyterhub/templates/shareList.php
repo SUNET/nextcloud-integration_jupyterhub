@@ -26,7 +26,8 @@ $shares = $_['shares'] ?? [];
         $name = (string)($share['name'] ?? $l->t('Shared notebook'));
         $sender = (string)($share['remoteSharedBy'] ?? $share['remoteOwner'] ?? '');
         $token = (string)($share['token'] ?? '');
-        $viewMode = (string)($share['webapp']['viewMode'] ?? 'iframe');
+        $targets = (array)($share['webapp']['target'] ?? ['iframe']);
+        $targetLabel = implode(', ', $targets);
         $href = \OC::$server->getURLGenerator()->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]);
         ?>
         <li>
@@ -35,11 +36,11 @@ $shares = $_['shares'] ?? [];
             <?php if ($sender !== '') : ?>
               <span class="sender"><?php p($l->t('from %s', [$sender])); ?></span>
             <?php endif; ?>
-            <span class="mode"><?php p($viewMode); ?></span>
+            <span class="mode"><?php p($targetLabel); ?></span>
           </div>
           <a class="button primary"
              href="<?php p($href); ?>"
-             <?php if ($viewMode === 'new-window') : ?>target="_blank" rel="noopener noreferrer"<?php endif; ?>>
+             <?php if (in_array('blank', $targets, true) && !in_array('iframe', $targets, true)) : ?>target="_blank" rel="noopener noreferrer"<?php endif; ?>>
             <?php p($l->t('Open')); ?>
           </a>
         </li>

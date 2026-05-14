@@ -9,6 +9,7 @@ namespace OCA\Jupyter\AppInfo;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Jupyter\Federation\CloudFederationProviderManagerDecorator;
 use OCA\Jupyter\Federation\WebappCloudFederationProvider;
+use OCA\Jupyter\Federation\WebappShareIntent;
 use OCA\Jupyter\Listener\CSPListener;
 use OCA\Jupyter\Listener\HasNotebookMetadataListener;
 use OCA\Jupyter\Listener\LoadFilesScriptListener;
@@ -24,9 +25,9 @@ use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\FilesMetadata\Event\MetadataLiveEvent;
+use OCP\IURLGenerator;
 use OCP\OCM\Events\LocalOCMDiscoveryEvent;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
-use OCP\Share\IManager;
 use Psr\Log\LoggerInterface;
 
 class Application extends App implements IBootstrap

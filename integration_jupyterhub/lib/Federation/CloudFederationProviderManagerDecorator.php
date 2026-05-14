@@ -13,56 +13,53 @@ use OCP\Federation\ICloudFederationProvider;
 use OCP\Federation\ICloudFederationProviderManager;
 use OCP\Federation\ICloudFederationShare;
 use OCP\Http\Client\IResponse;
-use OCP\Share\Exceptions\ShareNotFound;
-use OCP\Share\IManager;
-use OCP\Share\IShare;
+use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 
 /**
  * Wraps NC's {@see CloudFederationProviderManager} so we can rewrite
- * outbound OCM share payloads that carry our webapp attribute.
+ * outbound OCM share payloads that this app's controller announced as
+ * webapp shares.
  *
  * Flow:
- *   1. App's controller calls {@see IManager::createShare()} with a
- *      `IShare::TYPE_REMOTE` share whose attributes carry the marker
- *      `(integration_jupyterhub, webapp) = true` and the chosen viewMode.
- *   2. NC's `FederatedShareProvider::create` mints a token, persists the
- *      row, then asks NC's `Notifications::tryOCMEndPoint('share', …)`
- *      to dispatch an OCM share. That call ultimately reaches our
+ *   1. {@see \OCA\Jupyter\Controller\WebappShareController} calls
+ *      {@see WebappShareIntent::announce()} with the recipient cloud-id
+ *      and the chosen viewMode, then dispatches a regular
+ *      {@see \OCP\Share\IShare::TYPE_REMOTE} share via
+ *      {@see \OCP\Share\IManager::createShare()}.
+ *   2. NC's `FederatedShareProvider::create` mints a token, persists
+ *      the row, then asks `Notifications::tryOCMEndPoint('share', …)`
+ *      to dispatch an OCM share. That call ends up in our
  *      `sendShare()` / `sendCloudShare()`.
- *   3. We resolve the originating `IShare` by the provider id encoded
- *      in the outgoing OCM share (the federated share row's database id
- *      under the `ocFederatedSharing` provider). If the share has our
- *      attribute set, we substitute the payload with a
- *      {@see WebappCloudFederationShare} carrying both a `webdav` entry
- *      (the token NC just minted) and a `webapp` entry (our launcher
- *      options). One outbound payload, multi-protocol, resourceType = webapp.
+ *   3. We call {@see WebappShareIntent::pickup()} keyed on the
+ *      outgoing share's `shareWith` field. If the intent registry has
+ *      a matching announcement, we substitute the payload with a
+ *      {@see WebappCloudFederationShare} carrying both a `webdav`
+ *      entry (the token NC just minted) and a `webapp` entry (the
+ *      announced viewMode). One outbound payload, multi-protocol,
+ *      resourceType = webapp.
  *
- * Shares without our attribute pass through unchanged so this app stays
- * out of the way of every other federated share on the box.
+ * Shares without a matching intent pass through unchanged so this app
+ * stays out of the way of every other federated share on the box.
  *
- * Implements {@see ICloudFederationProviderManager} so DI can swap it in
- * globally; every method that isn't `sendShare`/`sendCloudShare` is a
- * straight delegation to the wrapped instance.
+ * Implements {@see ICloudFederationProviderManager} so DI can swap it
+ * in globally; every method that isn't `sendShare`/`sendCloudShare` is
+ * a straight delegation to the wrapped instance.
  */
 class CloudFederationProviderManagerDecorator implements ICloudFederationProviderManager
 {
   public function __construct(
     private CloudFederationProviderManager $inner,
-    private IManager $shareManager,
+    private WebappShareIntent $intent,
+    private IURLGenerator $urlGenerator,
     private LoggerInterface $logger,
   ) {
   }
 
-  /**
-   * Intercept the outbound share if the originating IShare carries our
-   * webapp marker; otherwise pass through.
-   */
   #[\Override]
   public function sendCloudShare(ICloudFederationShare $share): IResponse
   {
-    $rewritten = $this->maybeRewrite($share);
-    return $this->inner->sendCloudShare($rewritten);
+    return $this->inner->sendCloudShare($this->maybeRewrite($share));
   }
 
   /**
@@ -74,35 +71,28 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
   #[\Override]
   public function sendShare(ICloudFederationShare $share)
   {
-    $rewritten = $this->maybeRewrite($share);
-    return $this->inner->sendShare($rewritten);
+    return $this->inner->sendShare($this->maybeRewrite($share));
   }
 
   /**
-   * If the share belongs to a {@see IShare} carrying our webapp marker,
-   * return a new {@see WebappCloudFederationShare} reflecting the same
-   * recipient/owner data but with multi-protocol payload. Otherwise return
-   * the original share unchanged.
+   * If the share's recipient matches a pending webapp intent, return a
+   * new {@see WebappCloudFederationShare} reflecting the same
+   * recipient/owner data but with multi-protocol payload. Otherwise
+   * return the original share unchanged.
    */
   private function maybeRewrite(ICloudFederationShare $share): ICloudFederationShare
   {
     if ($share->getResourceType() !== 'file') {
       return $share;
     }
-
-    $ishare = $this->loadOriginatingShare($share->getProviderId());
-    if ($ishare === null) {
-      return $share;
-    }
-    $attrs = $ishare->getAttributes();
-    if ($attrs === null || $attrs->getAttribute(Application::APP_ID, 'webapp') !== true) {
+    $targets = $this->intent->pickup($share->getShareWith());
+    if ($targets === null || $targets === []) {
       return $share;
     }
 
-    $viewMode = (string)($attrs->getAttribute(Application::APP_ID, 'viewMode') ?? WebappCloudFederationShare::VIEW_IFRAME);
-    $token = $ishare->getToken();
-    if (!is_string($token) || $token === '') {
-      $this->logger->warning('Webapp share is missing a token; skipping multi-protocol rewrite');
+    $token = $this->extractWebdavToken($share->getProtocol());
+    if ($token === '') {
+      $this->logger->warning('Webapp share intent matched but no webdav token in outgoing payload; passing through unchanged');
       return $share;
     }
 
@@ -122,38 +112,39 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     $multi->setWebappProtocol(
       uri: $opener,
       sharedSecret: $token,
-      viewMode: $viewMode,
+      target: $targets,
       permissions: ['read'],
       appName: $share->getResourceName(),
       mimeType: 'application/vnd.jupyter',
     );
 
-    $this->logger->info('Rewrote OCM share {id} to multi-protocol webapp share', [
-      'id' => $share->getProviderId(),
+    $this->logger->info('Rewrote OCM share to {recipient} into multi-protocol webapp share', [
+      'recipient' => $share->getShareWith(),
     ]);
     return $multi;
   }
 
-  private function loadOriginatingShare(string $providerId): ?IShare
+  /**
+   * NC's CloudFederationShare puts the webdav token at
+   * `protocol.options.sharedSecret` in the single-protocol shape.
+   *
+   * @param array<mixed> $protocol
+   */
+  private function extractWebdavToken(array $protocol): string
   {
-    try {
-      return $this->shareManager->getShareById('ocFederatedSharing:' . $providerId);
-    } catch (ShareNotFound) {
-      return null;
-    } catch (\Throwable $e) {
-      $this->logger->debug('Could not resolve outgoing share by providerId: {msg}', ['msg' => $e->getMessage()]);
-      return null;
+    if (is_array($protocol['options'] ?? null) && is_string($protocol['options']['sharedSecret'] ?? null)) {
+      return $protocol['options']['sharedSecret'];
     }
+    if (is_array($protocol['webdav'] ?? null) && is_string($protocol['webdav']['sharedSecret'] ?? null)) {
+      return $protocol['webdav']['sharedSecret'];
+    }
+    return '';
   }
 
   private function buildOpenerUri(string $token): string
   {
-    // Constructed lazily because IURLGenerator isn't available here as a
-    // DI dep — this decorator is in the OCM send path which runs before
-    // routing context exists in some paths. Resolve via the server.
-    $urlGenerator = \OC::$server->get(\OCP\IURLGenerator::class);
-    return $urlGenerator->getAbsoluteURL(
-      $urlGenerator->linkToRoute(Application::APP_ID . '.page.index') . '?webapp=' . urlencode($token),
+    return $this->urlGenerator->getAbsoluteURL(
+      $this->urlGenerator->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]),
     );
   }
 

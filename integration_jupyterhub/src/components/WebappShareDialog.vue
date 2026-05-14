@@ -25,17 +25,20 @@
       </div>
 
       <div class="field">
-        <label>{{ t('integration_jupyterhub', 'How should the recipient open it?') }}</label>
+        <label>{{ t('integration_jupyterhub', 'Preferred view target') }}</label>
         <div class="modes">
           <label v-for="mode in modes" :key="mode.value" class="mode">
             <input
               type="radio"
               :value="mode.value"
-              v-model="viewMode"
+              v-model="target"
             >
             <span>{{ mode.label }}</span>
           </label>
         </div>
+        <p class="hint">
+          {{ t('integration_jupyterhub', 'The actual target is negotiated with the recipient — the wire field is the intersection of what both ends support.') }}
+        </p>
       </div>
 
       <p v-if="errorMessage" class="error">
@@ -76,7 +79,7 @@ export default {
     return {
       open: true,
       shareWith: '',
-      viewMode: 'iframe',
+      target: 'iframe',
       sending: false,
       errorMessage: '',
     }
@@ -87,7 +90,7 @@ export default {
       return [
         { value: 'iframe', label: t('integration_jupyterhub', 'Embed in Nextcloud (iframe)') },
         { value: 'redirect', label: t('integration_jupyterhub', 'Full-page redirect') },
-        { value: 'new-window', label: t('integration_jupyterhub', 'Open in a new window') },
+        { value: 'blank', label: t('integration_jupyterhub', 'Open in a new window') },
       ]
     },
     canSubmit() {
@@ -109,16 +112,19 @@ export default {
           {
             path: this.path,
             shareWith: this.shareWith.trim(),
-            viewMode: this.viewMode,
+            target: [this.target],
           },
         )
+        const targets = Array.isArray(response.data?.target)
+          ? response.data.target
+          : [this.target]
         showSuccess(t(
           'integration_jupyterhub',
-          'Shared {name} with {peer} ({mode})',
+          'Shared {name} with {peer} ({modes})',
           {
             name: this.name,
             peer: this.shareWith.trim(),
-            mode: response.data?.viewMode ?? this.viewMode,
+            modes: targets.join(', '),
           },
         ))
         this.onClose()
@@ -156,5 +162,10 @@ export default {
 .webapp-share-dialog .error {
   color: var(--color-error);
   margin-top: 8px;
+}
+.webapp-share-dialog .hint {
+  color: var(--color-text-maxcontrast);
+  font-size: 0.85em;
+  margin-top: 4px;
 }
 </style>

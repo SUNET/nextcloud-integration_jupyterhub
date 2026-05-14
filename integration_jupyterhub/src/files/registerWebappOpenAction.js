@@ -65,10 +65,12 @@ export function registerWebappOpenAction() {
           { params: { path: node.path } },
         )
         const token = response.data?.token
-        const viewMode = response.data?.webapp?.viewMode ?? 'iframe'
+        const targets = Array.isArray(response.data?.webapp?.target)
+          ? response.data.webapp.target
+          : ['iframe']
         if (token) {
           const launchUrl = generateUrl('/apps/integration_jupyterhub/ocm/open/{token}', { token })
-          if (viewMode === 'new-window') {
+          if (targets.includes('blank') && !targets.includes('iframe')) {
             window.open(launchUrl, '_blank', 'noopener,noreferrer')
           } else {
             window.location.href = launchUrl

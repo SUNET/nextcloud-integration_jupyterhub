@@ -7,8 +7,9 @@ declare(strict_types=1);
 namespace OCA\Jupyter\Controller;
 
 use OCA\Jupyter\AppInfo\Application;
+use OCA\Jupyter\Federation\WebappCapabilityDiscovery;
 use OCA\Jupyter\Federation\WebappCloudFederationShare;
-use OCA\Jupyter\Share\WebappShareAttributes;
+use OCA\Jupyter\Federation\WebappShareIntent;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
@@ -26,15 +27,13 @@ use Psr\Log\LoggerInterface;
 /**
  * Sender entry point for the "Share as JupyterHub webapp" flow.
  *
- * The frontend submits {path, shareWith, viewMode}. We build a normal
- * federated share via {@see IManager::createShare()} with our webapp
- * attribute set on the share's {@see \OCP\Share\IAttributes}. NC's
- * `FederatedShareProvider` then mints a token, persists the row, and
- * dispatches the outbound OCM payload — our
- * {@see \OCA\Jupyter\Federation\CloudFederationProviderManagerDecorator}
- * intercepts that dispatch and rewrites it to a multi-protocol
- * {@see WebappCloudFederationShare} so one OCM POST carries both the
- * webdav and webapp protocol entries.
+ * Builds a normal federated share via {@see IManager::createShare()};
+ * the multi-protocol rewrite happens inside the OCM send pipeline via
+ * {@see \OCA\Jupyter\Federation\CloudFederationProviderManagerDecorator}.
+ * Correlation between the controller and the decorator goes through
+ * {@see WebappShareIntent}: we announce the recipient + viewMode just
+ * before `createShare()`, the decorator picks it up when it sees the
+ * matching `shareWith` on the outbound share.
  */
 class WebappShareController extends Controller
 {
@@ -43,6 +42,8 @@ class WebappShareController extends Controller
     private IUserSession $userSession,
     private IRootFolder $rootFolder,
     private IManager $shareManager,
+    private WebappShareIntent $intent,
+    private WebappCapabilityDiscovery $discovery,
     private LoggerInterface $logger,
   ) {
     parent::__construct(Application::APP_ID, $request);
@@ -50,14 +51,20 @@ class WebappShareController extends Controller
 
   /**
    * @NoAdminRequired
+   *
+   * @param string|list<string> $target one or more preferred view
+   *   targets (iframe / redirect / new-window). The wire-level
+   *   `target` field is the intersection of the user's preferences,
+   *   this app's full target set, and what the remote advertises in
+   *   OCM discovery.
    */
-  public function create(string $path, string $shareWith, string $viewMode = WebappCloudFederationShare::VIEW_IFRAME): DataResponse
+  public function create(string $path, string $shareWith, array|string $target = WebappCloudFederationShare::TARGET_IFRAME): DataResponse
   {
     $user = $this->userSession->getUser();
     if ($user === null) {
       return new DataResponse(['error' => 'not authenticated'], Http::STATUS_UNAUTHORIZED);
     }
-    $viewMode = $this->normaliseViewMode($viewMode);
+    $requestedTargets = $this->normaliseRequestedTargets($target);
 
     try {
       $node = $this->rootFolder->getUserFolder($user->getUID())->get($path);
@@ -71,6 +78,18 @@ class WebappShareController extends Controller
       return new DataResponse(['error' => 'folder does not contain any .ipynb file'], Http::STATUS_BAD_REQUEST);
     }
 
+    // Compute the wire target list = user prefs ∩ sender caps ∩ remote caps.
+    $remoteHost = $this->extractHost($shareWith);
+    $remoteSupported = $remoteHost === null
+      ? WebappCapabilityDiscovery::ALL_TARGETS
+      : $this->discovery->remoteSupportedTargets($remoteHost);
+    $targets = $this->discovery->intersect($requestedTargets, $remoteSupported);
+    if ($targets === []) {
+      return new DataResponse([
+        'error' => 'no overlapping webapp target between this server and ' . ($remoteHost ?? 'remote'),
+      ], Http::STATUS_BAD_GATEWAY);
+    }
+
     $share = $this->shareManager->newShare();
     $share->setNode($node);
     $share->setSharedBy($user->getUID());
@@ -79,10 +98,12 @@ class WebappShareController extends Controller
     $share->setSharedWith($shareWith);
     $share->setPermissions(Constants::PERMISSION_READ);
 
-    $attrs = new WebappShareAttributes();
-    $attrs->setAttribute(Application::APP_ID, 'webapp', true);
-    $attrs->setAttribute(Application::APP_ID, 'viewMode', $viewMode);
-    $share->setAttributes($attrs);
+    // Announce intent before createShare(): the decorator picks it up
+    // by `shareWith` when the outbound OCM share is built. We could
+    // also try IShare::setAttributes() but FederatedShareProvider does
+    // not persist the attributes JSON, so it'd be gone by the time the
+    // decorator's lookup runs.
+    $this->intent->announce($shareWith, $targets);
 
     try {
       $created = $this->shareManager->createShare($share);
@@ -96,7 +117,7 @@ class WebappShareController extends Controller
     return new DataResponse([
       'id' => $created->getId(),
       'token' => $created->getToken(),
-      'viewMode' => $viewMode,
+      'target' => $targets,
       'shareWith' => $shareWith,
     ]);
   }
@@ -111,12 +132,33 @@ class WebappShareController extends Controller
     return false;
   }
 
-  private function normaliseViewMode(string $mode): string
+  /**
+   * @param string|list<string> $target
+   * @return list<string>
+   */
+  private function normaliseRequestedTargets(array|string $target): array
   {
-    return match (strtolower($mode)) {
-      WebappCloudFederationShare::VIEW_REDIRECT => WebappCloudFederationShare::VIEW_REDIRECT,
-      'new-window', 'newwindow', 'new_window' => WebappCloudFederationShare::VIEW_NEW_WINDOW,
-      default => WebappCloudFederationShare::VIEW_IFRAME,
-    };
+    $raw = is_array($target) ? $target : [$target];
+    $out = [];
+    foreach ($raw as $t) {
+      $value = match (strtolower((string)$t)) {
+        WebappCloudFederationShare::TARGET_REDIRECT => WebappCloudFederationShare::TARGET_REDIRECT,
+        WebappCloudFederationShare::TARGET_BLANK, 'new-window', 'newwindow', 'new_window' => WebappCloudFederationShare::TARGET_BLANK,
+        default => WebappCloudFederationShare::TARGET_IFRAME,
+      };
+      if (!in_array($value, $out, true)) {
+        $out[] = $value;
+      }
+    }
+    return $out === [] ? [WebappCloudFederationShare::TARGET_IFRAME] : $out;
+  }
+
+  private function extractHost(string $cloudId): ?string
+  {
+    $at = strrpos($cloudId, '@');
+    if ($at === false) {
+      return null;
+    }
+    return substr($cloudId, $at + 1) ?: null;
   }
 }

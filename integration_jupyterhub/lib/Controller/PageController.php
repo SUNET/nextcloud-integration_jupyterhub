@@ -91,11 +91,14 @@ class PageController extends Controller
       return $this->errorPage('Neither a local JupyterHub URL nor a sender-provided URI is available.');
     }
 
-    $viewMode = $record['webapp']['viewMode'] ?? WebappCloudFederationShare::VIEW_IFRAME;
+    // `target` is the list of view targets the sender advertised as
+    // acceptable. We pick the first one (prefer iframe), then render.
+    $advertised = (array)($record['webapp']['target'] ?? [WebappCloudFederationShare::TARGET_IFRAME]);
+    $target = $this->pickTarget($advertised);
 
-    return match ($viewMode) {
-      WebappCloudFederationShare::VIEW_REDIRECT => new RedirectResponse($launchUrl),
-      WebappCloudFederationShare::VIEW_NEW_WINDOW => new TemplateResponse(Application::APP_ID, 'launcherNewWindow', [
+    return match ($target) {
+      WebappCloudFederationShare::TARGET_REDIRECT => new RedirectResponse($launchUrl),
+      WebappCloudFederationShare::TARGET_BLANK => new TemplateResponse(Application::APP_ID, 'launcherNewWindow', [
         'launch_url' => $launchUrl,
         'name' => $record['name'] ?? 'Shared notebook',
       ]),
@@ -103,6 +106,24 @@ class PageController extends Controller
         'jupyter_url' => $launchUrl,
       ]),
     };
+  }
+
+  /**
+   * @param list<string> $advertised
+   */
+  private function pickTarget(array $advertised): string
+  {
+    $preference = [
+      WebappCloudFederationShare::TARGET_IFRAME,
+      WebappCloudFederationShare::TARGET_REDIRECT,
+      WebappCloudFederationShare::TARGET_BLANK,
+    ];
+    foreach ($preference as $candidate) {
+      if (in_array($candidate, $advertised, true)) {
+        return $candidate;
+      }
+    }
+    return WebappCloudFederationShare::TARGET_IFRAME;
   }
 
   private function errorPage(string $message): TemplateResponse
