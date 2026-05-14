@@ -6,6 +6,7 @@ const appId = 'integration_jupyterhub'
 
 webpackConfig.entry = {
   adminSettings: { import: path.join(__dirname, 'src', 'adminSettings.js'), filename: appId + '-adminSettings.js' },
+  files: { import: path.join(__dirname, 'src', 'files.js'), filename: appId + '-files.js' },
 }
 
 module.exports = webpackConfig
