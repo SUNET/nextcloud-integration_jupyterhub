@@ -13,9 +13,8 @@ use OCP\EventDispatcher\IEventListener;
 use OCP\Util;
 
 /**
- * Loads our Files-app extension script (registers the
- * "Share as JupyterHub webapp" file action) whenever the Files app
- * renders.
+ * Loads our Files-app extension scripts (sender file-action + receiver
+ * sidebar section) whenever the Files app renders.
  *
  * @implements IEventListener<LoadAdditionalScriptsEvent>
  */

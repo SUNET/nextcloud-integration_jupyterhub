@@ -20,6 +20,14 @@
   <dependencies>
     <nextcloud min-version="28" max-version="35" />
   </dependencies>
+  <repair-steps>
+    <post-migration>
+      <step>OCA\Jupyter\Repair\RegisterFilesMetadata</step>
+    </post-migration>
+    <install>
+      <step>OCA\Jupyter\Repair\RegisterFilesMetadata</step>
+    </install>
+  </repair-steps>
   <commands>
     <command>OCA\Jupyter\Commands\GetUrl</command>
     <command>OCA\Jupyter\Commands\SetUrl</command>

@@ -7,16 +7,12 @@ declare(strict_types=1);
 namespace OCA\Jupyter\Controller;
 
 use OCA\Jupyter\AppInfo\Application;
-use OCA\Jupyter\Db\WebappShare;
-use OCA\Jupyter\Db\WebappShareMapper;
+use OCA\Jupyter\Federation\WebappAppDataStore;
+use OCA\Jupyter\Federation\WebappCloudFederationShare;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
-use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
-use OCP\Files\IRootFolder;
-use OCP\Files\NotFoundException;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -26,9 +22,8 @@ class PageController extends Controller
   public function __construct(
     IRequest $request,
     private IConfig $config,
-    private WebappShareMapper $mapper,
     private IUserSession $userSession,
-    private IRootFolder $rootFolder,
+    private WebappAppDataStore $store,
   ) {
     parent::__construct(Application::APP_ID, $request);
   }
@@ -40,80 +35,74 @@ class PageController extends Controller
   public function index(): TemplateResponse
   {
     $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
-    return new TemplateResponse(Application::APP_ID, 'main', [
-      'jupyter_url' => $jupyterUrl . '/hub/home',
+    if (!empty($jupyterUrl)) {
+      // Local hub configured — keep the existing iframe view.
+      return new TemplateResponse(Application::APP_ID, 'main', [
+        'jupyter_url' => $jupyterUrl . '/hub/home',
+      ]);
+    }
+    // No local hub: render the list of inbound webapp shares so the
+    // user still has something to launch (each share carries its
+    // sender's hub URI in the stored webapp options).
+    $user = $this->userSession->getUser();
+    $shares = $user === null ? [] : array_values(array_filter(
+      $this->store->listForUser($user->getUID()),
+      fn ($r) => is_array($r) && !str_starts_with((string)($r['token'] ?? ''), 'file-share-'),
+    ));
+    return new TemplateResponse(Application::APP_ID, 'shareList', [
+      'shares' => $shares,
     ]);
   }
 
   /**
-   * Open a received OCM webapp share. Honours the stored view mode —
-   * iframe (default), redirect or new-window — to satisfy the OCM
-   * webapp-sharing draft's three target options.
+   * Receiver-side launcher for an inbound OCM webapp share.
+   *
+   * Looks up the webapp record by token (scoped to the logged-in user)
+   * and renders the launcher in the viewMode stored at receive time:
+   * iframe → embed local JupyterHub, redirect → 302, new-window →
+   * intermediate page with a user-initiated open-link.
    *
    * @NoAdminRequired
    * @NoCSRFRequired
    */
   public function ocmOpen(string $token): Http\Response
   {
-    try {
-      $share = $this->mapper->findByToken($token);
-    } catch (DoesNotExistException $e) {
-      return $this->errorPage('Share not found');
-    }
-    if ($share->getDirection() !== WebappShare::DIRECTION_IN) {
-      return $this->errorPage('Not a received share');
-    }
-
     $user = $this->userSession->getUser();
-    if ($user === null || $user->getUID() !== $share->getLocalUser()) {
-      return $this->errorPage('You are not the recipient of this share');
+    if ($user === null) {
+      return $this->errorPage('You must be signed in to open a shared webapp.');
     }
 
+    $record = $this->store->get($user->getUID(), $token);
+    if ($record === null) {
+      return $this->errorPage('Webapp share not found for this account.');
+    }
+
+    // Two launch destinations:
+    //   - local hub (when this NC has jupyter_url configured): the user
+    //     has their own JupyterHub, and the federated mount has already
+    //     surfaced the shared files; open the local hub home.
+    //   - sender's webapp URI (otherwise): we honour the OCM webapp draft
+    //     and consume the sender's hub via the URI they advertised.
     $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
-    if (empty($jupyterUrl)) {
-      return $this->errorPage('JupyterHub URL not configured on this instance');
+    $launchUrl = !empty($jupyterUrl)
+      ? rtrim($jupyterUrl, '/') . '/hub/home'
+      : (string)($record['webapp']['uri'] ?? '');
+    if ($launchUrl === '') {
+      return $this->errorPage('Neither a local JupyterHub URL nor a sender-provided URI is available.');
     }
-    // Inbound shares don't carry a local notebook path — drop the user
-    // into their JupyterHub home so they can clone or browse the
-    // shared notebook. A future revision will wire the remote URI
-    // through to a launcher endpoint.
-    $launchUrl = rtrim($jupyterUrl, '/') . '/hub/home';
 
-    return match ($share->getViewMode()) {
-      WebappShare::VIEW_REDIRECT => new RedirectResponse($launchUrl),
-      WebappShare::VIEW_NEW_WINDOW => new TemplateResponse(Application::APP_ID, 'launcherNewWindow', [
+    $viewMode = $record['webapp']['viewMode'] ?? WebappCloudFederationShare::VIEW_IFRAME;
+
+    return match ($viewMode) {
+      WebappCloudFederationShare::VIEW_REDIRECT => new RedirectResponse($launchUrl),
+      WebappCloudFederationShare::VIEW_NEW_WINDOW => new TemplateResponse(Application::APP_ID, 'launcherNewWindow', [
         'launch_url' => $launchUrl,
-        'name' => $share->getName() ?? 'Shared notebook',
+        'name' => $record['name'] ?? 'Shared notebook',
       ]),
       default => new TemplateResponse(Application::APP_ID, 'main', [
         'jupyter_url' => $launchUrl,
       ]),
     };
-  }
-
-  /**
-   * @NoAdminRequired
-   */
-  public function hasNotebooks(string $path): DataResponse
-  {
-    $user = $this->userSession->getUser();
-    if ($user === null) {
-      return new DataResponse(['hasNotebook' => false], Http::STATUS_UNAUTHORIZED);
-    }
-    try {
-      $node = $this->rootFolder->getUserFolder($user->getUID())->get($path);
-    } catch (NotFoundException $e) {
-      return new DataResponse(['hasNotebook' => false], Http::STATUS_NOT_FOUND);
-    }
-    if (!($node instanceof \OCP\Files\Folder)) {
-      return new DataResponse(['hasNotebook' => false]);
-    }
-    foreach ($node->getDirectoryListing() as $child) {
-      if ($child instanceof \OCP\Files\File && str_ends_with(strtolower($child->getName()), '.ipynb')) {
-        return new DataResponse(['hasNotebook' => true]);
-      }
-    }
-    return new DataResponse(['hasNotebook' => false]);
   }
 
   private function errorPage(string $message): TemplateResponse

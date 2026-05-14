@@ -11,7 +11,7 @@
   >
     <div class="webapp-share-dialog">
       <p>
-        {{ t('integration_jupyterhub', 'Share the folder {name} via OCM to a JupyterHub-capable peer.', { name }) }}
+        {{ t('integration_jupyterhub', 'Share folder {name} via OCM to a JupyterHub-capable peer. Both file access and webapp launch are sent in one multi-protocol share.', { name }) }}
       </p>
 
       <div class="field">
@@ -70,7 +70,7 @@ export default {
     name: { type: String, required: true },
   },
 
-  emits: ['close', 'error'],
+  emits: ['close'],
 
   data() {
     return {
@@ -127,7 +127,6 @@ export default {
         this.errorMessage = detail
         showError(t('integration_jupyterhub', 'Could not share: {detail}', { detail }))
         this.sending = false
-        this.$emit('error', e)
       }
     },
   },

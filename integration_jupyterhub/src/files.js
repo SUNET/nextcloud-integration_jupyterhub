@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { registerWebappShareAction } from './files/registerWebappShareAction.js'
+import { registerWebappFileAction } from './files/registerWebappFileAction.js'
+import { registerWebappOpenAction } from './files/registerWebappOpenAction.js'
 
-registerWebappShareAction()
+registerWebappFileAction()
+registerWebappOpenAction()

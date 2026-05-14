@@ -1,44 +1,48 @@
 <?php
 
 declare(strict_types=1);
-
 // SPDX-FileCopyrightText: Mikael Nordin <kano@sunet.se>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 namespace OCA\Jupyter\Controller;
 
 use OCA\Jupyter\AppInfo\Application;
-use OCA\Jupyter\Db\WebappShare;
-use OCA\Jupyter\Db\WebappShareMapper;
-use OCA\Jupyter\Federation\DiscoveryService;
-use OCA\Jupyter\Federation\WebappDiscoveryException;
+use OCA\Jupyter\Federation\WebappCloudFederationShare;
+use OCA\Jupyter\Share\WebappShareAttributes;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
-use OCP\Federation\ICloudFederationFactory;
-use OCP\Federation\ICloudFederationProviderManager;
-use OCP\Federation\ICloudIdManager;
+use OCP\Constants;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
-use OCP\IURLGenerator;
+use OCP\IRequest;
 use OCP\IUserSession;
-use OCP\OCM\Exceptions\OCMProviderException;
-use OCP\Security\ISecureRandom;
+use OCP\Share\Exceptions\GenericShareException;
+use OCP\Share\IManager;
+use OCP\Share\IShare;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Sender entry point for the "Share as JupyterHub webapp" flow.
+ *
+ * The frontend submits {path, shareWith, viewMode}. We build a normal
+ * federated share via {@see IManager::createShare()} with our webapp
+ * attribute set on the share's {@see \OCP\Share\IAttributes}. NC's
+ * `FederatedShareProvider` then mints a token, persists the row, and
+ * dispatches the outbound OCM payload — our
+ * {@see \OCA\Jupyter\Federation\CloudFederationProviderManagerDecorator}
+ * intercepts that dispatch and rewrites it to a multi-protocol
+ * {@see WebappCloudFederationShare} so one OCM POST carries both the
+ * webdav and webapp protocol entries.
+ */
 class WebappShareController extends Controller
 {
   public function __construct(
-    \OCP\IRequest $request,
+    IRequest $request,
     private IUserSession $userSession,
     private IRootFolder $rootFolder,
-    private WebappShareMapper $mapper,
-    private DiscoveryService $discovery,
-    private ICloudFederationFactory $federationFactory,
-    private ICloudFederationProviderManager $federationManager,
-    private ICloudIdManager $cloudIdManager,
-    private ISecureRandom $random,
-    private IURLGenerator $urlGenerator,
+    private IManager $shareManager,
     private LoggerInterface $logger,
   ) {
     parent::__construct(Application::APP_ID, $request);
@@ -47,189 +51,72 @@ class WebappShareController extends Controller
   /**
    * @NoAdminRequired
    */
-  public function create(string $path, string $shareWith, string $viewMode = WebappShare::VIEW_IFRAME): DataResponse
+  public function create(string $path, string $shareWith, string $viewMode = WebappCloudFederationShare::VIEW_IFRAME): DataResponse
   {
     $user = $this->userSession->getUser();
     if ($user === null) {
       return new DataResponse(['error' => 'not authenticated'], Http::STATUS_UNAUTHORIZED);
     }
-
     $viewMode = $this->normaliseViewMode($viewMode);
 
-    [$remoteUser, $remoteHost] = $this->splitCloudId($shareWith);
-    if ($remoteHost === null) {
-      return new DataResponse(['error' => 'shareWith must be of the form user@host'], Http::STATUS_BAD_REQUEST);
-    }
-
     try {
-      $userFolder = $this->rootFolder->getUserFolder($user->getUID());
-      $node = $userFolder->get($path);
-    } catch (NotFoundException $e) {
+      $node = $this->rootFolder->getUserFolder($user->getUID())->get($path);
+    } catch (NotFoundException) {
       return new DataResponse(['error' => 'folder not found'], Http::STATUS_NOT_FOUND);
     }
-    if (!($node instanceof \OCP\Files\Folder)) {
+    if (!($node instanceof Folder)) {
       return new DataResponse(['error' => 'path is not a folder'], Http::STATUS_BAD_REQUEST);
     }
     if (!$this->folderHasNotebook($node)) {
       return new DataResponse(['error' => 'folder does not contain any .ipynb file'], Http::STATUS_BAD_REQUEST);
     }
 
-    try {
-      $targets = $this->discovery->discoverWebapp($remoteHost);
-    } catch (WebappDiscoveryException $e) {
-      return new DataResponse(['error' => 'discovery failed: ' . $e->getMessage()], Http::STATUS_BAD_GATEWAY);
-    }
+    $share = $this->shareManager->newShare();
+    $share->setNode($node);
+    $share->setSharedBy($user->getUID());
+    $share->setShareOwner($user->getUID());
+    $share->setShareType(IShare::TYPE_REMOTE);
+    $share->setSharedWith($shareWith);
+    $share->setPermissions(Constants::PERMISSION_READ);
 
-    $chosen = $targets->pickPreferred($viewMode);
-    if ($chosen === null) {
-      return new DataResponse(['error' => 'remote does not support any webapp view mode'], Http::STATUS_BAD_GATEWAY);
-    }
-
-    $token = $this->random->generate(32, ISecureRandom::CHAR_ALPHANUMERIC);
-    $secret = $this->random->generate(32, ISecureRandom::CHAR_ALPHANUMERIC);
-
-    $entity = new WebappShare();
-    $entity->setDirection(WebappShare::DIRECTION_OUT);
-    $entity->setToken($token);
-    $entity->setResourcePath($node->getPath());
-    $entity->setRemoteUri($shareWith);
-    $entity->setRemoteUser($remoteUser);
-    $entity->setLocalUser($user->getUID());
-    $entity->setSharedSecret($secret);
-    $entity->setViewMode($chosen);
-    $entity->setPermissions('read');
-    $entity->setName($node->getName());
-    $entity->setMimeType('application/vnd.jupyter');
-    $entity->setState('sent');
-    $entity->setCreatedAt(time());
-    $saved = $this->mapper->insert($entity);
-
-    $openerUri = $this->urlGenerator->getAbsoluteURL(
-      $this->urlGenerator->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]),
-    );
-
-    // owner/sharedBy must be a fully-qualified cloud-id (user@host), not
-    // a bare uid — bob's cloud_federation_api parses them through
-    // getHostFromFederationId() and rejects the share without the '@'.
-    $ownerCloudId = $this->cloudIdManager->getCloudId($user->getUID(), null)->getId();
-    $share = $this->federationFactory->getCloudFederationShare(
-      $shareWith,
-      $node->getName(),
-      '',
-      (string)$saved->getId(),
-      $ownerCloudId,
-      $user->getDisplayName(),
-      $ownerCloudId,
-      $user->getDisplayName(),
-      $secret,
-      'user',
-      Application::WEBAPP_RESOURCE_TYPE,
-    );
-    $share->setProtocol([
-      'name' => 'webapp',
-      'options' => [
-        'uri' => $openerUri,
-        'sharedSecret' => $secret,
-        'viewMode' => $chosen,
-        'permissions' => ['read'],
-        'name' => $node->getName(),
-        'mimeType' => 'application/vnd.jupyter',
-      ],
-    ]);
+    $attrs = new WebappShareAttributes();
+    $attrs->setAttribute(Application::APP_ID, 'webapp', true);
+    $attrs->setAttribute(Application::APP_ID, 'viewMode', $viewMode);
+    $share->setAttributes($attrs);
 
     try {
-      $this->federationManager->sendCloudShare($share);
-    } catch (OCMProviderException $e) {
-      $this->logger->warning('OCM webapp share send failed', ['exception' => $e]);
-      $entity->setState('failed');
-      $this->mapper->update($entity);
-      return new DataResponse(['error' => 'send failed: ' . $e->getMessage()], Http::STATUS_BAD_GATEWAY);
+      $created = $this->shareManager->createShare($share);
+    } catch (GenericShareException $e) {
+      return new DataResponse(['error' => $e->getMessage()], $e->getCode() ?: Http::STATUS_BAD_REQUEST);
+    } catch (\Throwable $e) {
+      $this->logger->warning('Failed to create webapp share', ['exception' => $e]);
+      return new DataResponse(['error' => $e->getMessage()], Http::STATUS_BAD_GATEWAY);
     }
 
     return new DataResponse([
-      'id' => $saved->getId(),
-      'token' => $token,
-      'viewMode' => $chosen,
+      'id' => $created->getId(),
+      'token' => $created->getToken(),
+      'viewMode' => $viewMode,
       'shareWith' => $shareWith,
     ]);
   }
 
-  /**
-   * @NoAdminRequired
-   */
-  public function listSent(): DataResponse
-  {
-    $user = $this->userSession->getUser();
-    if ($user === null) {
-      return new DataResponse([], Http::STATUS_UNAUTHORIZED);
-    }
-    return new DataResponse($this->serialise(
-      $this->mapper->findForUser($user->getUID(), WebappShare::DIRECTION_OUT),
-    ));
-  }
-
-  /**
-   * @NoAdminRequired
-   */
-  public function listReceived(): DataResponse
-  {
-    $user = $this->userSession->getUser();
-    if ($user === null) {
-      return new DataResponse([], Http::STATUS_UNAUTHORIZED);
-    }
-    return new DataResponse($this->serialise(
-      $this->mapper->findForUser($user->getUID(), WebappShare::DIRECTION_IN),
-    ));
-  }
-
-  /** @param WebappShare[] $rows */
-  private function serialise(array $rows): array
-  {
-    return array_map(fn (WebappShare $r) => [
-      'id' => $r->getId(),
-      'token' => $r->getToken(),
-      'direction' => $r->getDirection(),
-      'name' => $r->getName(),
-      'viewMode' => $r->getViewMode(),
-      'remote' => $r->getRemoteUri(),
-      'state' => $r->getState(),
-      'createdAt' => $r->getCreatedAt(),
-    ], $rows);
-  }
-
-  private function folderHasNotebook(\OCP\Files\Folder $folder): bool
+  private function folderHasNotebook(Folder $folder): bool
   {
     foreach ($folder->getDirectoryListing() as $child) {
-      if (!($child instanceof \OCP\Files\File)) {
-        continue;
-      }
-      if (str_ends_with(strtolower($child->getName()), '.ipynb')) {
+      if ($child instanceof \OCP\Files\File && str_ends_with(strtolower($child->getName()), '.ipynb')) {
         return true;
       }
     }
     return false;
   }
 
-  /**
-   * @return array{0:string,1:?string}
-   */
-  private function splitCloudId(string $cloudId): array
-  {
-    $cloudId = trim($cloudId);
-    $at = strrpos($cloudId, '@');
-    if ($at === false) {
-      return [$cloudId, null];
-    }
-    return [substr($cloudId, 0, $at), substr($cloudId, $at + 1)];
-  }
-
   private function normaliseViewMode(string $mode): string
   {
     return match (strtolower($mode)) {
-      'iframe' => WebappShare::VIEW_IFRAME,
-      'redirect' => WebappShare::VIEW_REDIRECT,
-      'new-window', 'newwindow', 'new_window' => WebappShare::VIEW_NEW_WINDOW,
-      default => WebappShare::VIEW_IFRAME,
+      WebappCloudFederationShare::VIEW_REDIRECT => WebappCloudFederationShare::VIEW_REDIRECT,
+      'new-window', 'newwindow', 'new_window' => WebappCloudFederationShare::VIEW_NEW_WINDOW,
+      default => WebappCloudFederationShare::VIEW_IFRAME,
     };
   }
 }
