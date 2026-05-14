@@ -17,6 +17,7 @@ use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Federation\ICloudFederationFactory;
 use OCP\Federation\ICloudFederationProviderManager;
+use OCP\Federation\ICloudIdManager;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IURLGenerator;
@@ -35,6 +36,7 @@ class WebappShareController extends Controller
     private DiscoveryService $discovery,
     private ICloudFederationFactory $federationFactory,
     private ICloudFederationProviderManager $federationManager,
+    private ICloudIdManager $cloudIdManager,
     private ISecureRandom $random,
     private IURLGenerator $urlGenerator,
     private LoggerInterface $logger,
@@ -106,14 +108,18 @@ class WebappShareController extends Controller
       $this->urlGenerator->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]),
     );
 
+    // owner/sharedBy must be a fully-qualified cloud-id (user@host), not
+    // a bare uid — bob's cloud_federation_api parses them through
+    // getHostFromFederationId() and rejects the share without the '@'.
+    $ownerCloudId = $this->cloudIdManager->getCloudId($user->getUID(), null)->getId();
     $share = $this->federationFactory->getCloudFederationShare(
       $shareWith,
       $node->getName(),
       '',
       (string)$saved->getId(),
-      $user->getUID(),
+      $ownerCloudId,
       $user->getDisplayName(),
-      $user->getUID(),
+      $ownerCloudId,
       $user->getDisplayName(),
       $secret,
       'user',
