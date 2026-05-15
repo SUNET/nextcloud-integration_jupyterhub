@@ -96,7 +96,6 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       return $share;
     }
 
-    $opener = $this->buildOpenerUri($token);
     $multi = new WebappCloudFederationShare(
       shareWith: $share->getShareWith(),
       name: $share->getResourceName(),
@@ -108,14 +107,19 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       sharedByDisplayName: $share->getSharedByDisplayName(),
       shareType: $share->getShareType(),
     );
-    $multi->setWebdavProtocol($token);
-    $multi->setWebappProtocol(
-      uri: $opener,
-      sharedSecret: $token,
+    $multi->setWebappShare(
+      webdavUri: $this->urlGenerator->getAbsoluteURL('/public.php/webdav/'),
+      webdavSharedSecret: $token,
+      webappUri: $this->buildOpenerUri($token),
+      webappSharedSecret: $token,
       target: $targets,
+      // TODO(follow-up): expose permissions in the share dialog and
+      // thread the user's choice through here. Defaulting to read for
+      // now to match the dialog's hard-coded read.
       permissions: ['read'],
       appName: $share->getResourceName(),
       mimeType: 'application/vnd.jupyter',
+      mustExchangeToken: true,
     );
 
     $this->logger->info('Rewrote OCM share to {recipient} into multi-protocol webapp share', [

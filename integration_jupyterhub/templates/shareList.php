@@ -28,7 +28,7 @@ $shares = $_['shares'] ?? [];
         $token = (string)($share['token'] ?? '');
         $targets = (array)($share['webapp']['target'] ?? ['iframe']);
         $targetLabel = implode(', ', $targets);
-        $href = \OC::$server->getURLGenerator()->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]);
+        $href = \OC::$server->get(\OCP\IURLGenerator::class)->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]);
         ?>
         <li>
           <div class="meta">
