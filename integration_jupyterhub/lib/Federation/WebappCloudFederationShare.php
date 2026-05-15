@@ -78,35 +78,13 @@ class WebappCloudFederationShare extends CloudFederationShare
   }
 
   /**
-   * Build the entire multi-protocol envelope in one call.
-   *
-   * @param string $webdavUri          sender's federated webdav endpoint
-   *                                   (e.g. https://alice/public.php/webdav/)
-   * @param string $webdavSharedSecret token / pre-bearer for the webdav handle
-   * @param string $webappUri          sender's launcher endpoint (the URL the
-   *                                   receiver navigates to when opening the
-   *                                   share in their JupyterHub)
-   * @param string $webappSharedSecret token for the webapp launcher
-   * @param list<string>|string $target view target(s) — one or more of
-   *                                   iframe / redirect / blank
-   * @param list<string> $permissions  OCM permissions list, e.g. ['read'] or
-   *                                   ['read','write']. Applies to both
-   *                                   protocol entries (the share grants
-   *                                   the same level of access in either
-   *                                   transport).
-   * @param string|null $appName       display name to surface in the
-   *                                   receiver UI when launching the webapp
-   * @param string|null $mimeType      mime-type hint for the receiver
-   * @param bool $mustExchangeToken    require the receiver to swap the
-   *                                   webdav sharedSecret for a bearer
-   *                                   token via the exchange-token flow
-   *                                   before using it
+   * Build the multi-protocol envelope. One sharedSecret covers both
+   * webdav and webapp per the OCM webapp-sharing draft.
    */
   public function setWebappShare(
     string $webdavUri,
-    string $webdavSharedSecret,
     string $webappUri,
-    string $webappSharedSecret,
+    string $sharedSecret,
     array|string $target,
     array $permissions = ['read'],
     ?string $appName = null,
@@ -115,7 +93,7 @@ class WebappCloudFederationShare extends CloudFederationShare
   ): void {
     $webdav = [
       'uri' => $webdavUri,
-      'sharedSecret' => $webdavSharedSecret,
+      'sharedSecret' => $sharedSecret,
       'permissions' => $permissions,
     ];
     if ($mustExchangeToken) {
@@ -124,7 +102,7 @@ class WebappCloudFederationShare extends CloudFederationShare
 
     $webapp = [
       'uri' => $webappUri,
-      'sharedSecret' => $webappSharedSecret,
+      'sharedSecret' => $sharedSecret,
       'target' => is_array($target) ? array_values($target) : [$target],
       'permissions' => $permissions,
     ];

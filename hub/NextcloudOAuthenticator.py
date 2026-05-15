@@ -2,6 +2,11 @@ import os
 import time
 import requests
 from datetime import datetime
+from urllib.parse import urlparse
+
+import jwt
+from jwt import PyJWKClient
+from jupyterhub.handlers.base import BaseHandler
 from oauthenticator.generic import GenericOAuthenticator
 
 token_url = 'https://' + os.environ[
@@ -37,14 +42,104 @@ def post_auth_hook(authenticator, handler, authentication):
     return authentication
 
 
+# Comma-separated allowlist of OCM token issuer domains. The OCMLoginHandler
+# rejects JWTs whose iss-host isn't in this set.
+_OCM_TRUSTED_ISSUER_DOMAINS = frozenset(
+    d.strip() for d in os.environ.get('OCM_TRUSTED_ISSUER_DOMAINS', '').split(',') if d.strip()
+)
+
+_ocm_jwks_clients: dict[str, PyJWKClient] = {}
+
+
+def _ocm_jwks(domain):
+    client = _ocm_jwks_clients.get(domain)
+    if client is None:
+        client = PyJWKClient(f'https://{domain}/.well-known/jwks.json', cache_keys=True)
+        _ocm_jwks_clients[domain] = client
+    return client
+
+
+def _verify_ocm_jwt(token):
+    """Verify an OCM webapp access_token and return its claims."""
+    try:
+        unverified = jwt.decode(token, options={'verify_signature': False})
+    except jwt.InvalidTokenError as e:
+        raise ValueError(f'malformed token: {e}')
+    issuer = unverified.get('iss')
+    if not issuer:
+        raise ValueError('token missing iss claim')
+    parsed = urlparse(issuer)
+    if parsed.scheme != 'https' or not parsed.netloc:
+        raise ValueError('iss must be an https URL')
+    if _OCM_TRUSTED_ISSUER_DOMAINS and parsed.netloc not in _OCM_TRUSTED_ISSUER_DOMAINS:
+        raise ValueError(f'issuer {parsed.netloc} not in trusted issuer allowlist')
+    signing_key = _ocm_jwks(parsed.netloc).get_signing_key_from_jwt(token).key
+    return jwt.decode(
+        token,
+        signing_key,
+        algorithms=['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'EdDSA'],
+        issuer=issuer,
+        options={'require': ['iss', 'sub', 'aud', 'exp', 'client_id'], 'verify_aud': False},
+    )
+
+
+class OCMLoginHandler(BaseHandler):
+    """Logs in a synthetic ocm:<aud> user given a valid OCM access_token.
+
+    The browser arrives here via auto-submit form from /services/ocm/open.
+    We verify the JWT, ensure the synthetic user, set the hub session
+    cookie, and redirect to next (which is the spawned server URL).
+    """
+
+    async def post(self):
+        access_token = self.get_argument('access_token', '')
+        next_url = self.get_argument('next', '/hub/home')
+        if not access_token:
+            self.set_status(400)
+            self.write('access_token missing')
+            return
+        try:
+            claims = _verify_ocm_jwt(access_token)
+        except (ValueError, jwt.InvalidTokenError) as e:
+            self.set_status(401)
+            self.write(f'OCM token verification failed: {e}')
+            return
+        username = f'ocm:{claims["aud"]}'
+        user = await self.auth_to_user({'name': username})
+        self.set_login_cookie(user)
+        self.redirect(next_url)
+
+
 class NextcloudOAuthenticator(GenericOAuthenticator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.user_dict = {}
 
+    def get_handlers(self, app):
+        return super().get_handlers(app) + [(r'/ocm-login', OCMLoginHandler)]
+
     async def pre_spawn_start(self, user, spawner):
         super().pre_spawn_start(user, spawner)
+        # OCM share spawn: user_options carries the share details. We inject
+        # the webdav URI + bearer token as env so the singleuser image can
+        # mount it (rclone/davfs2). FUSE needs SYS_ADMIN.
+        ocm = (spawner.user_options or {}).get('ocm_share')
+        if ocm:
+            spawner.environment['OCM_WEBDAV_URI'] = ocm['webdav_uri']
+            spawner.environment['OCM_BEARER'] = ocm['bearer']
+            spawner.environment['OCM_PERMISSIONS'] = ','.join(ocm.get('permissions', ['read']))
+            spawner.environment['OCM_RESOURCE_NAME'] = ocm.get('resource_name', '')
+            spawner.environment['OCM_SHARER'] = ocm.get('sharer', '')
+            spawner.environment['OCM_PROVIDER_ID'] = ocm.get('provider_id', '')
+            extra = spawner.extra_container_config or {}
+            sec = dict(extra.get('securityContext') or {})
+            caps = dict(sec.get('capabilities') or {})
+            caps['add'] = list({*caps.get('add', []), 'SYS_ADMIN'})
+            sec['capabilities'] = caps
+            extra['securityContext'] = sec
+            spawner.extra_container_config = extra
+            return
         auth_state = await user.get_auth_state()
         if not auth_state:
             return

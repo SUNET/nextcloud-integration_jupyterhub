@@ -109,9 +109,8 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     );
     $multi->setWebappShare(
       webdavUri: $this->urlGenerator->getAbsoluteURL('/public.php/webdav/'),
-      webdavSharedSecret: $token,
       webappUri: $this->buildOpenerUri($token),
-      webappSharedSecret: $token,
+      sharedSecret: $token,
       target: $targets,
       // TODO(follow-up): expose permissions in the share dialog and
       // thread the user's choice through here. Defaulting to read for
