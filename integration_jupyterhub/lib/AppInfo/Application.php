@@ -8,6 +8,7 @@ namespace OCA\Jupyter\AppInfo;
 
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Jupyter\Federation\CloudFederationProviderManagerDecorator;
+use OCA\Jupyter\Federation\OCMHubBackChannel;
 use OCA\Jupyter\Federation\WebappCloudFederationProvider;
 use OCA\Jupyter\Federation\WebappShareIntent;
 use OCA\Jupyter\Listener\CSPListener;
@@ -73,7 +74,9 @@ class Application extends App implements IBootstrap
       function ($c) {
         return new CloudFederationProviderManagerDecorator(
           $c->get(\OC\Federation\CloudFederationProviderManager::class),
-          $c->get(IManager::class),
+          $c->get(WebappShareIntent::class),
+          $c->get(IURLGenerator::class),
+          $c->get(OCMHubBackChannel::class),
           $c->get(LoggerInterface::class),
         );
       },
