@@ -292,8 +292,10 @@ def verify_ocm_signature(handler: RequestHandler, body: bytes, sender_domain: st
     keyid = params.get('keyid')
     alg = params.get('alg')
     created = params.get('created')
-    if not keyid or not alg or created is None:
-        raise HTTPError(401, 'signature params must include keyid, alg, created')
+    # `alg` is optional per RFC 9421 §3.3.7 (Nextcloud omits it by default);
+    # the verifier resolves the algorithm from the JWK.
+    if not keyid or created is None:
+        raise HTTPError(401, 'signature params must include keyid and created')
 
     for required in REQUIRED_COVERED:
         if required not in covered:
@@ -324,12 +326,17 @@ def verify_ocm_signature(handler: RequestHandler, body: bytes, sender_domain: st
     if not verify_content_digest(digest_hdr, body):
         raise HTTPError(400, 'Content-Digest mismatch')
 
-    native_alg = normalize_alg(str(alg))
     jwk = get_jwk_by_kid(sender_domain, str(jwk_kid))
     if jwk is None:
         raise HTTPError(401, f'kid {jwk_kid} not found in {sender_domain} JWKS')
-    if jwk.algorithm_name and normalize_alg(jwk.algorithm_name) != native_alg:
-        raise HTTPError(401, 'algorithm sources disagree')
+    if alg:
+        native_alg = normalize_alg(str(alg))
+        if jwk.algorithm_name and normalize_alg(jwk.algorithm_name) != native_alg:
+            raise HTTPError(401, 'algorithm sources disagree')
+    elif jwk.algorithm_name:
+        native_alg = normalize_alg(jwk.algorithm_name)
+    else:
+        raise HTTPError(401, 'no alg param and JWK has no algorithm')
 
     sig_params_line = str(inner_list_item).strip()
 
