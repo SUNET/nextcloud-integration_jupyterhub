@@ -869,7 +869,7 @@ hub:
                         'provider_id': rec.provider_id,
                     },
                 })
-                next_url = f'/user/{quote(username, safe=":")}/{quote(server_name, safe="")}/'
+                next_url = f'/user/{quote(username, safe="@")}/{quote(server_name, safe="")}/lab'
                 self._render_handoff(token, next_url, rec.name)
 
             def _render_handoff(self, access_token, next_url, share_name):

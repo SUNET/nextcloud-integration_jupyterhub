@@ -615,7 +615,7 @@ class OpenHandler(RequestHandler):
             },
         })
 
-        next_url = f'/user/{quote(username, safe=":")}/{quote(server_name, safe="")}/'
+        next_url = f'/user/{quote(username, safe="@")}/{quote(server_name, safe="")}/lab'
         self._render_handoff(token, next_url, rec.name)
 
     def _render_handoff(self, access_token: str, next_url: str, share_name: str) -> None:
