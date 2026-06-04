@@ -57,6 +57,11 @@ hub:
         )
 
       class OCMLoginHandler(BaseHandler):
+        # The cross-origin handoff form carries no JupyterHub _xsrf token; the
+        # access_token JWT it posts is itself the credential (verified below),
+        # so XSRF protection is redundant here.
+        def check_xsrf_cookie(self):
+          return
         async def post(self):
           access_token = self.get_argument('access_token', '')
           next_url = self.get_argument('next', '/hub/home')
