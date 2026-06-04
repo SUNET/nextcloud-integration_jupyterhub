@@ -539,46 +539,30 @@ class OpenHandler(RequestHandler):
         })
 
         next_url = f'/user/{quote(username, safe=":")}/{quote(server_name, safe="")}/'
-        target = webapp.get('target', ['iframe'])
-        if isinstance(target, list):
-            target = target[0] if target else 'iframe'
+        self._render_handoff(token, next_url, rec.name)
 
-        self._render_handoff(token, next_url, target, rec.name)
-
-    def _render_handoff(self, access_token: str, next_url: str, target: str, share_name: str) -> None:
+    def _render_handoff(self, access_token: str, next_url: str, share_name: str) -> None:
         """Auto-submit a form to /hub/ocm-login so the hub sets a session cookie.
 
-        Form-target selection mirrors the OCM webapp-sharing example:
-          iframe   → form posts into a named iframe in this page
-          popup    → form opens in a new window (_blank)
-          redirect → form replaces the top-level page (_top)
+        The receiver (e.g. ocmremotewebapp) already placed this response in
+        the container the user chose — an embedded iframe, the current tab,
+        or a fresh tab. The handoff just logs the synthetic user in and lands
+        on the notebook within that same frame, so it always targets _self.
+        No second display dispatch (which previously nested another iframe or
+        broke out to _top).
         """
-        if target == 'popup':
-            form_target = '_blank'
-        elif target == 'iframe':
-            form_target = 'ocm-app-frame'
-        else:
-            form_target = '_top'
-
         title = html_mod.escape(f'Opening {share_name}')
         action = html_mod.escape(OCM_LOGIN_URL, quote=True)
         at_attr = html_mod.escape(access_token, quote=True)
         next_attr = html_mod.escape(next_url, quote=True)
 
-        body_parts = []
-        if target == 'iframe':
-            body_parts.append(
-                '<iframe name="ocm-app-frame" id="ocm-app-frame" '
-                'style="width:100vw;height:100vh;border:0"></iframe>'
-            )
-        body_parts.append(
-            f'<form id="f" method="POST" action="{action}" target="{form_target}">'
+        body = (
+            f'<form id="f" method="POST" action="{action}" target="_self">'
             f'<input type="hidden" name="access_token" value="{at_attr}">'
             f'<input type="hidden" name="next" value="{next_attr}">'
             '</form>'
             '<script>document.getElementById("f").submit()</script>'
         )
-        body = ''.join(body_parts)
 
         self.set_header('Content-Type', 'text/html; charset=utf-8')
         self.write(
