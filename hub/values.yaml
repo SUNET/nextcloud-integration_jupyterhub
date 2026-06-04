@@ -118,6 +118,13 @@ hub:
           super().pre_spawn_start(user, spawner)
           ocm = (spawner.user_options or {}).get('ocm_share')
           if ocm:
+            # The bearer is the OCM share access_token; re-validate it
+            # (signature + exp) before granting the server — this is the
+            # authoritative check for the initial, OCM-service-initiated spawn.
+            try:
+              _verify_ocm_jwt(ocm['bearer'])
+            except (ValueError, jwt.InvalidTokenError) as e:
+              raise Exception(f'OCM share access_token invalid: {e}')
             spawner.environment['OCM_WEBDAV_URI'] = ocm['webdav_uri']
             spawner.environment['OCM_BEARER'] = ocm['bearer']
             spawner.environment['OCM_PERMISSIONS'] = ','.join(ocm.get('permissions', ['read']))
@@ -151,7 +158,11 @@ hub:
             auth_state = await user.get_auth_state()
             token = (auth_state or {}).get('ocm_access_token')
             if not token:
-              return False
+              # No session token yet: this is the initial OCM-service-driven
+              # spawn (the handoff login runs afterwards). The OCM service
+              # already verified the access_token and pre_spawn_start
+              # re-validates the share bearer, so allow it here.
+              return True
             try:
               _verify_ocm_jwt(token)
             except (ValueError, jwt.InvalidTokenError) as e:
