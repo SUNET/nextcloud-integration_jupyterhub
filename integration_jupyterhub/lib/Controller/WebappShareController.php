@@ -127,6 +127,31 @@ class WebappShareController extends Controller
     ]);
   }
 
+  /**
+   * @NoAdminRequired
+   *
+   * Probe a folder for any direct `.ipynb` child. Lets the Files-app file
+   * action decide whether to open the share dialog when the cached
+   * metadata is unknown (which is the common case for sibling rows in a
+   * parent listing).
+   */
+  public function check(string $path): DataResponse
+  {
+    $user = $this->userSession->getUser();
+    if ($user === null) {
+      return new DataResponse(['error' => 'not authenticated'], Http::STATUS_UNAUTHORIZED);
+    }
+    try {
+      $node = $this->rootFolder->getUserFolder($user->getUID())->get($path);
+    } catch (NotFoundException) {
+      return new DataResponse(['hasNotebook' => false], Http::STATUS_NOT_FOUND);
+    }
+    if (!($node instanceof Folder)) {
+      return new DataResponse(['hasNotebook' => false]);
+    }
+    return new DataResponse(['hasNotebook' => $this->folderHasNotebook($node)]);
+  }
+
   private function folderHasNotebook(Folder $folder): bool
   {
     foreach ($folder->getDirectoryListing() as $child) {
