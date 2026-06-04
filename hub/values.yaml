@@ -235,7 +235,17 @@ hub:
               'url': 'http://' + os.environ.get('HUB_SERVICE_HOST', 'hub') + ':' + os.environ.get('HUB_SERVICE_PORT_OCM', '8083'),
               'display': False,
               'api_token': os.environ['JUPYTERHUB_OCM_API_KEY'],
-              'command': [sys.executable, '/usr/local/etc/jupyterhub/ocm-service.py']
+              'command': [sys.executable, '/usr/local/etc/jupyterhub/ocm-service.py'],
+              # JupyterHub only injects JUPYTERHUB_* into managed service
+              # subprocesses, so the OCM allowlists / login URL must be
+              # forwarded explicitly — otherwise TRUSTED_BACK_CHANNEL_DOMAINS
+              # is empty and every back-channel push is rejected with 403.
+              'environment': {
+                  'OCM_TRUSTED_BACK_CHANNEL_DOMAINS': os.environ.get('OCM_TRUSTED_BACK_CHANNEL_DOMAINS', ''),
+                  'OCM_TRUSTED_ISSUER_DOMAINS': os.environ.get('OCM_TRUSTED_ISSUER_DOMAINS', ''),
+                  'OCM_LOGIN_URL': os.environ.get('OCM_LOGIN_URL', '/hub/ocm-login'),
+                  'OCM_JWKS_TTL': os.environ.get('OCM_JWKS_TTL', '300'),
+              },
           }
       ]
       c.JupyterHub.admin_users = {"refresh-token", "ocm"}
