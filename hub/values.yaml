@@ -131,8 +131,11 @@ hub:
           auth_state = await user.get_auth_state()
           if not auth_state:
             return
-          access_token = auth_state['access_token']
-          spawner.environment['NEXTCLOUD_ACCESS_TOKEN'] = access_token
+          # OCM users only carry 'ocm_access_token'; only OAuth users have a
+          # Nextcloud 'access_token' to forward to the singleuser server.
+          access_token = auth_state.get('access_token')
+          if access_token:
+            spawner.environment['NEXTCLOUD_ACCESS_TOKEN'] = access_token
 
         async def refresh_user(self, user, handler=None):
           # OCM synthetic users authenticate with the share access_token, not
@@ -450,7 +453,7 @@ hub:
                 raise HTTPError(502, f'failed to create hub user: {r.status_code} {r.text[:200]}')
 
         def hub_start_named_server(user, server, user_options):
-            r = _hub_request('POST', f'/users/{quote(user, safe="")}/servers/{quote(server, safe="")}', json={'name': server, 'user_options': user_options})
+            r = _hub_request('POST', f'/users/{quote(user, safe="")}/servers/{quote(server, safe="")}', json=user_options)
             if r.status_code not in (201, 202, 400):
                 raise HTTPError(502, f'failed to start named-server: {r.status_code} {r.text[:200]}')
 

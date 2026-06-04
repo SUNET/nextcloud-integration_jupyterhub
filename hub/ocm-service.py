@@ -485,7 +485,7 @@ def hub_start_named_server(user: str, server: str, user_options: dict) -> None:
     r = _hub_request(
         'POST',
         f'/users/{quote(user, safe="")}/servers/{quote(server, safe="")}',
-        json={'name': server, 'user_options': user_options},
+        json=user_options,
     )
     # 201 = started, 202 = starting, 400 = already running (idempotent path)
     if r.status_code not in (201, 202, 400):
