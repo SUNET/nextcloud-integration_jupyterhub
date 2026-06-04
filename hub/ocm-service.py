@@ -380,7 +380,7 @@ def verify_access_token(token: str) -> dict:
         signing_key = get_jwks_client(parsed.netloc).get_signing_key_from_jwt(token).key
     except Exception as e:
         log(f'JWKS lookup failed for {parsed.netloc}: {e}')
-        raise HTTPError(401, 'could not resolve signing key')
+        raise HTTPError(401, f'could not resolve signing key: {type(e).__name__}: {e}')
 
     try:
         claims = jwt.decode(
