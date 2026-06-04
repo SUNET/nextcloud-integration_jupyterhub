@@ -869,7 +869,11 @@ singleuser:
     JUPYTER_ENABLE_LAB: "yes"
   extraFiles:
     jupyter_notebook_config:
-      mountPath: /home/jovyan/.jupyter/jupyter_server_config.py
+      # System-wide jupyter config path. Mounting under ~/.jupyter makes
+      # Kubernetes create that dir as root:root 0755, which causes
+      # jupyter_core.migrate to crash on PermissionError writing
+      # ~/.jupyter/migrated. Use the system-wide config dir instead.
+      mountPath: /usr/local/etc/jupyter/jupyter_server_config.py
       stringData: |
         import os
         c = get_config()
