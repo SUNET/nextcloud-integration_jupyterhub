@@ -39,8 +39,12 @@
   </settings>
   <navigations>
     <navigation>
+      <id>integration_jupyterhub</id>
       <name>Jupyter</name>
       <route>integration_jupyterhub.page.index</route>
+      <icon>app.svg</icon>
+      <order>80</order>
+      <type>link</type>
     </navigation>
   </navigations>
 </info>
