@@ -25,7 +25,7 @@
 
         <div class="webapp-sharing">
           <NcCheckboxRadioSwitch
-            :checked.sync="webappSharingEnabled"
+            v-model:checked="webappSharingEnabled"
             type="switch"
           >
             {{ t('integration_jupyterhub', 'Enable OCM webapp sharing (off by default)') }}
