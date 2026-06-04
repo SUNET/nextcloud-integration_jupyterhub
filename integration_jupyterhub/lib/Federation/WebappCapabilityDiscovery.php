@@ -64,7 +64,7 @@ class WebappCapabilityDiscovery
     foreach ($provider->getResourceTypes() as $resource) {
       // Per OCM-API#368, webapp-receive lives under the resource type of
       // the actual resource — folder (or file). We always share folders.
-      if ($resource->getName() !== Application::FOLDER_RESOURCE_TYPE
+      if ($resource->getName() !== Application::WEBAPP_RESOURCE_TYPE
         && $resource->getName() !== 'file'
       ) {
         continue;

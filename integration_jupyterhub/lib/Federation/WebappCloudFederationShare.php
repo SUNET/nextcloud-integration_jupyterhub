@@ -10,7 +10,7 @@ use OC\Federation\CloudFederationShare;
 use OCA\Jupyter\AppInfo\Application;
 
 /**
- * OCM federation share of resource type {@see Application::FOLDER_RESOURCE_TYPE}.
+ * OCM federation share of resource type {@see Application::WEBAPP_RESOURCE_TYPE}.
  *
  * Extends Nextcloud's {@see CloudFederationShare} (which already
  * implements {@see \OCP\Federation\ICloudFederationShare}) so we reuse
@@ -71,7 +71,7 @@ class WebappCloudFederationShare extends CloudFederationShare
       $sharedBy,
       $sharedByDisplayName,
       $shareType,
-      Application::FOLDER_RESOURCE_TYPE,
+      Application::WEBAPP_RESOURCE_TYPE,
     );
     // Protocol is intentionally not initialised here. Callers must
     // invoke setWebappShare() before the share is sent — that single

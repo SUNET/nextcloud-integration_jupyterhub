@@ -36,9 +36,11 @@ class Application extends App implements IBootstrap
    * OCM resource type used for webapp shares sent by this app. Per OCM
    * spec (cs3org/OCM-API#368) `webapp` is a protocol name, NOT a resource
    * type — the resource type is the underlying resource (`folder` here,
-   * since we always share notebook folders).
+   * since we always share notebook folders). The constant name reflects
+   * the role (the resource type used by the webapp-share flow), matching
+   * the equivalent constant in ocmremotewebapp.
    */
-  public const FOLDER_RESOURCE_TYPE = 'folder';
+  public const WEBAPP_RESOURCE_TYPE = 'folder';
 
   public function __construct()
   {
