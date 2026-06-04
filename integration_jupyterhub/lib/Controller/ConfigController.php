@@ -14,20 +14,22 @@ use OCP\IRequest;
 
 class ConfigController extends Controller
 {
-  private IConfig $config;
-
   public function __construct(
     IRequest $request,
-    IConfig $config,
+    private IConfig $config,
   ) {
     parent::__construct(Application::APP_ID, $request);
-    $this->config = $config;
   }
 
-  public function update(string $jupyter_url): DataResponse
+  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null): DataResponse
   {
-    $jupyter_url = rtrim($jupyter_url, '/');
-    $this->config->setAppValue(Application::APP_ID, 'jupyter_url', $jupyter_url);
+    if ($jupyter_url !== null) {
+      $jupyter_url = rtrim($jupyter_url, '/');
+      $this->config->setAppValue(Application::APP_ID, 'jupyter_url', $jupyter_url);
+    }
+    if ($webapp_sharing_enabled !== null) {
+      $this->config->setAppValue(Application::APP_ID, 'webapp_sharing_enabled', $webapp_sharing_enabled ? 'yes' : 'no');
+    }
     return new DataResponse(['status' => 'success']);
   }
 }

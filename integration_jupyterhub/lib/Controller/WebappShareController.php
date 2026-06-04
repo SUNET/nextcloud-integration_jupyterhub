@@ -17,6 +17,7 @@ use OCP\Constants;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserSession;
 use OCP\Share\Exceptions\GenericShareException;
@@ -44,6 +45,7 @@ class WebappShareController extends Controller
     private IManager $shareManager,
     private WebappShareIntent $intent,
     private WebappCapabilityDiscovery $discovery,
+    private IConfig $config,
     private LoggerInterface $logger,
   ) {
     parent::__construct(Application::APP_ID, $request);
@@ -63,6 +65,9 @@ class WebappShareController extends Controller
     $user = $this->userSession->getUser();
     if ($user === null) {
       return new DataResponse(['error' => 'not authenticated'], Http::STATUS_UNAUTHORIZED);
+    }
+    if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
+      return new DataResponse(['error' => 'webapp sharing is disabled on this instance'], Http::STATUS_FORBIDDEN);
     }
     $requestedTargets = $this->normaliseRequestedTargets($target);
 

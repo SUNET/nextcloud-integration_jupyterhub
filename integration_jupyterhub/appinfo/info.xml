@@ -31,6 +31,8 @@
   <commands>
     <command>OCA\Jupyter\Commands\GetUrl</command>
     <command>OCA\Jupyter\Commands\SetUrl</command>
+    <command>OCA\Jupyter\Commands\GetWebappSharing</command>
+    <command>OCA\Jupyter\Commands\SetWebappSharing</command>
   </commands>
   <settings>
     <admin>OCA\Jupyter\Settings\AdminSettings</admin>

@@ -88,6 +88,9 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     if ($share->getResourceType() !== 'file') {
       return $share;
     }
+    if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
+      return $share;
+    }
     $targets = $this->intent->pickup($share->getShareWith());
     if ($targets === null || $targets === []) {
       return $share;

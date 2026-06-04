@@ -26,7 +26,9 @@ class AdminSettings implements ISettings
   public function getForm(): TemplateResponse
   {
     $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
+    $webappSharingEnabled = $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes';
     $this->initialStateService->provideInitialState('jupyter_url', $jupyterUrl);
+    $this->initialStateService->provideInitialState('webapp_sharing_enabled', $webappSharingEnabled);
     return new TemplateResponse(Application::APP_ID, 'adminSettings');
   }
 

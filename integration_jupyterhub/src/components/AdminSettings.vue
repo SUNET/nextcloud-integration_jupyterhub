@@ -22,6 +22,19 @@
             :placeholder="t('integration_jupyterhub', 'https://jupyter.example.com')"
           />
         </div>
+
+        <div class="webapp-sharing">
+          <NcCheckboxRadioSwitch
+            :checked.sync="webappSharingEnabled"
+            type="switch"
+          >
+            {{ t('integration_jupyterhub', 'Enable OCM webapp sharing (off by default)') }}
+          </NcCheckboxRadioSwitch>
+          <p class="hint">
+            {{ t('integration_jupyterhub', 'Allows users to share folders containing notebooks with remote users as JupyterHub webapps over OCM.') }}
+          </p>
+        </div>
+
         <NcButton
           :wide="true"
           @click="save"
@@ -38,7 +51,7 @@
 
 <script>
 import Check from 'vue-material-design-icons/Check.vue'
-import { NcButton, NcSettingsSection, NcTextField } from '@nextcloud/vue'
+import { NcButton, NcCheckboxRadioSwitch, NcSettingsSection, NcTextField } from '@nextcloud/vue'
 import { loadState } from '@nextcloud/initial-state'
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
@@ -50,6 +63,7 @@ export default {
   components: {
     Check,
     NcButton,
+    NcCheckboxRadioSwitch,
     NcSettingsSection,
     NcTextField,
   },
@@ -57,6 +71,7 @@ export default {
   data() {
     return {
       jupyterUrl: loadState('integration_jupyterhub', 'jupyter_url', ''),
+      webappSharingEnabled: loadState('integration_jupyterhub', 'webapp_sharing_enabled', false),
     }
   },
 
@@ -70,6 +85,7 @@ export default {
       try {
         await axios.put(generateUrl('/apps/integration_jupyterhub/config'), {
           jupyter_url: url,
+          webapp_sharing_enabled: this.webappSharingEnabled,
         })
         showSuccess(t('integration_jupyterhub', 'JupyterHub settings saved.'))
       } catch (e) {
@@ -80,3 +96,13 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.webapp-sharing {
+  margin: 1em 0;
+}
+.webapp-sharing .hint {
+  color: var(--color-text-maxcontrast);
+  margin-top: 0.25em;
+}
+</style>
