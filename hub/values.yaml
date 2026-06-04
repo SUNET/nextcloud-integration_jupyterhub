@@ -598,9 +598,19 @@ hub:
             now = int(time.time())
             if abs(now - int(created)) > SIG_FRESHNESS_WINDOW:
                 raise HTTPError(401, 'signature created outside freshness window')
-            if '#' not in keyid:
-                raise HTTPError(401, 'keyid must be "<domain>#<kid>"')
-            keyid_domain, kid = keyid.rsplit('#', 1)
+            # Nextcloud publishes keyId as a full URI
+            # "https://<host>/ocm#<fragment>" and its JWKS `kid` equals that
+            # whole string. Simpler senders may use the bare "<domain>#<kid>"
+            # form. Support both: derive the host to check against the sender
+            # domain, and the value to match against the JWK `kid`.
+            parsed_keyid = urlparse(keyid)
+            if parsed_keyid.scheme and parsed_keyid.netloc:
+                keyid_domain = parsed_keyid.netloc
+                jwk_kid = keyid
+            elif '#' in keyid:
+                keyid_domain, jwk_kid = keyid.rsplit('#', 1)
+            else:
+                raise HTTPError(401, 'keyid must be a URI or "<domain>#<kid>"')
             if keyid_domain != sender_domain:
                 raise HTTPError(401, f'keyid domain {keyid_domain} != sender domain {sender_domain}')
             digest_hdr = handler.request.headers.get('Content-Digest')
@@ -609,9 +619,9 @@ hub:
             if not verify_content_digest(digest_hdr, body):
                 raise HTTPError(400, 'Content-Digest mismatch')
             native_alg = normalize_alg(str(alg))
-            jwk = get_jwk_by_kid(sender_domain, str(kid))
+            jwk = get_jwk_by_kid(sender_domain, str(jwk_kid))
             if jwk is None:
-                raise HTTPError(401, f'kid {kid} not found in {sender_domain} JWKS')
+                raise HTTPError(401, f'kid {jwk_kid} not found in {sender_domain} JWKS')
             if jwk.algorithm_name and normalize_alg(jwk.algorithm_name) != native_alg:
                 raise HTTPError(401, 'algorithm sources disagree')
             sig_params_line = str(inner_list_item).strip()
