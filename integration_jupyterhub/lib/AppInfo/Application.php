@@ -9,25 +9,22 @@ namespace OCA\Jupyter\AppInfo;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Jupyter\Federation\CloudFederationProviderManagerDecorator;
 use OCA\Jupyter\Federation\OCMHubBackChannel;
-use OCA\Jupyter\Federation\WebappCloudFederationProvider;
 use OCA\Jupyter\Federation\WebappShareIntent;
 use OCA\Jupyter\Listener\CSPListener;
 use OCA\Jupyter\Listener\HasNotebookMetadataListener;
 use OCA\Jupyter\Listener\LoadFilesScriptListener;
-use OCA\Jupyter\Listener\LocalOCMDiscoveryListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
-use OCP\Federation\Exceptions\ProviderAlreadyExistsException;
 use OCP\Federation\ICloudFederationProviderManager;
+use OCP\IConfig;
 use OCP\Files\Events\Node\NodeCreatedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\FilesMetadata\Event\MetadataLiveEvent;
 use OCP\IURLGenerator;
-use OCP\OCM\Events\LocalOCMDiscoveryEvent;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use Psr\Log\LoggerInterface;
 
@@ -35,14 +32,8 @@ class Application extends App implements IBootstrap
 {
   public const APP_ID = 'integration_jupyterhub';
 
-  /** OCM resource type advertised via /.well-known/ocm for webapp shares. */
+  /** OCM resource type used for webapp shares sent by this app. */
   public const WEBAPP_RESOURCE_TYPE = 'webapp';
-
-  /** Path component appended to .well-known/ocm endPoint where senders POST webapp shares. */
-  public const WEBAPP_PROTOCOL_PATH = '/index.php/apps/integration_jupyterhub/ocm/open';
-
-  /** User-facing label in NC's federation provider registry. */
-  public const WEBAPP_DISPLAY_NAME = 'JupyterHub Webapp';
 
   public function __construct()
   {
@@ -52,7 +43,6 @@ class Application extends App implements IBootstrap
   public function register(IRegistrationContext $context): void
   {
     $context->registerEventListener(AddContentSecurityPolicyEvent::class, CSPListener::class);
-    $context->registerEventListener(LocalOCMDiscoveryEvent::class, LocalOCMDiscoveryListener::class);
     $context->registerEventListener(LoadAdditionalScriptsEvent::class, LoadFilesScriptListener::class);
 
     // FilesMetadata: compute the boolean "has notebook?" for folders so
@@ -76,6 +66,7 @@ class Application extends App implements IBootstrap
           $c->get(\OC\Federation\CloudFederationProviderManager::class),
           $c->get(WebappShareIntent::class),
           $c->get(IURLGenerator::class),
+          $c->get(IConfig::class),
           $c->get(OCMHubBackChannel::class),
           $c->get(LoggerInterface::class),
         );
@@ -85,16 +76,5 @@ class Application extends App implements IBootstrap
 
   public function boot(IBootContext $context): void
   {
-    $context->injectFn(function (ICloudFederationProviderManager $manager): void {
-      try {
-        $manager->addCloudFederationProvider(
-          self::WEBAPP_RESOURCE_TYPE,
-          self::WEBAPP_DISPLAY_NAME,
-          fn () => \OC::$server->get(WebappCloudFederationProvider::class),
-        );
-      } catch (ProviderAlreadyExistsException) {
-        // already registered (e.g. double-boot in tests)
-      }
-    });
   }
 }

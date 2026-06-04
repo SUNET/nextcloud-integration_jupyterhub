@@ -16,8 +16,8 @@ use Psr\Log\LoggerInterface;
  * sender can compute the wire-level `target` field as the intersection
  * of what both ends can do.
  *
- * The peer's discovery payload looks like (see
- * {@see \OCA\Jupyter\Listener\LocalOCMDiscoveryListener}):
+ * The peer's discovery payload (as advertised by the companion
+ * ocmremotewebapp app on the receiving side) looks like:
  *
  *     "resourceTypes": [{
  *       "name": "webapp",

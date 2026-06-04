@@ -7,9 +7,7 @@ declare(strict_types=1);
 return [
   'routes' => [
     ['name' => 'page#index', 'url' => '/', 'verb' => 'GET'],
-    ['name' => 'page#ocmOpen', 'url' => '/ocm/open/{token}', 'verb' => 'GET'],
     ['name' => 'config#update', 'url' => '/config', 'verb' => 'PUT'],
     ['name' => 'webappShare#create', 'url' => '/api/v1/webapp-share', 'verb' => 'POST'],
-    ['name' => 'receivedShare#showAt', 'url' => '/api/v1/webapp-share/at', 'verb' => 'GET'],
   ],
 ];

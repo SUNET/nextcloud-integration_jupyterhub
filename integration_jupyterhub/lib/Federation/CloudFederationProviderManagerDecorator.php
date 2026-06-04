@@ -13,6 +13,7 @@ use OCP\Federation\ICloudFederationProvider;
 use OCP\Federation\ICloudFederationProviderManager;
 use OCP\Federation\ICloudFederationShare;
 use OCP\Http\Client\IResponse;
+use OCP\IConfig;
 use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 
@@ -52,6 +53,7 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     private CloudFederationProviderManager $inner,
     private WebappShareIntent $intent,
     private IURLGenerator $urlGenerator,
+    private IConfig $config,
     private OCMHubBackChannel $hubBackChannel,
     private LoggerInterface $logger,
   ) {
@@ -108,9 +110,14 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       sharedByDisplayName: $share->getSharedByDisplayName(),
       shareType: $share->getShareType(),
     );
+    $webappUri = $this->buildHubOpenerUri();
+    if ($webappUri === '') {
+      $this->logger->warning('jupyter_url is not configured; cannot build webapp URI, passing share through unchanged');
+      return $share;
+    }
     $multi->setWebappShare(
       webdavUri: $this->urlGenerator->getAbsoluteURL('/public.php/webdav/'),
-      webappUri: $this->buildOpenerUri($token),
+      webappUri: $webappUri,
       sharedSecret: $token,
       target: $targets,
       // TODO(follow-up): expose permissions in the share dialog and
@@ -146,11 +153,19 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     return '';
   }
 
-  private function buildOpenerUri(string $token): string
+  /**
+   * The webapp URI advertised to recipients points at this app's
+   * configured JupyterHub's OCM open endpoint. Recipients run the
+   * companion ocmremotewebapp app, which form-POSTs the exchanged
+   * access_token there to launch the share.
+   */
+  private function buildHubOpenerUri(): string
   {
-    return $this->urlGenerator->getAbsoluteURL(
-      $this->urlGenerator->linkToRoute(Application::APP_ID . '.page.ocmOpen', ['token' => $token]),
-    );
+    $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url', '');
+    if ($jupyterUrl === '') {
+      return '';
+    }
+    return rtrim($jupyterUrl, '/') . '/services/ocm/open';
   }
 
   // ----- straight-through delegations -----
