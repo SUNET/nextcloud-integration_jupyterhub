@@ -597,7 +597,7 @@ hub:
             if sig_input_hdr.count('ocm=') > 1 or sig_hdr.count('ocm=') > 1:
                 raise HTTPError(401, 'multiple "ocm" signatures present')
             inner_list_item = sig_input_dict['ocm']
-            covered = [item.value for item in inner_list_item.value]
+            covered = [item.value for item in inner_list_item]
             params = dict(inner_list_item.params)
             keyid = params.get('keyid'); alg = params.get('alg'); created = params.get('created')
             if not keyid or not alg or created is None:

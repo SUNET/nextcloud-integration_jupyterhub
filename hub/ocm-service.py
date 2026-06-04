@@ -286,7 +286,7 @@ def verify_ocm_signature(handler: RequestHandler, body: bytes, sender_domain: st
         raise HTTPError(401, 'multiple "ocm" signatures present')
 
     inner_list_item = sig_input_dict['ocm']
-    covered = [item.value for item in inner_list_item.value]
+    covered = [item.value for item in inner_list_item]
     params = dict(inner_list_item.params)
 
     keyid = params.get('keyid')
