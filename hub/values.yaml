@@ -1,6 +1,10 @@
 debug:
   enabled: true
 hub:
+  # OCM webapp shares launch as named servers (share-<clientId>), so named
+  # servers must be enabled or the hub 400s the start and the /share-<id>/
+  # path 404s on the default server.
+  allowNamedServers: true
   config:
     Authenticator:
       auto_login: true
