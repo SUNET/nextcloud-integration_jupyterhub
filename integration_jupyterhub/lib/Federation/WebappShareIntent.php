@@ -30,7 +30,7 @@ namespace OCA\Jupyter\Federation;
  */
 class WebappShareIntent
 {
-  /** @var array<string, list<string>> recipient cloud-id => list of targets */
+  /** @var array<string, list<string>> normalized recipient cloud-id => list of targets */
   private array $pending = [];
 
   /**
@@ -38,7 +38,7 @@ class WebappShareIntent
    */
   public function announce(string $shareWith, array $targets): void
   {
-    $this->pending[$shareWith] = $targets;
+    $this->pending[$this->normalize($shareWith)] = $targets;
   }
 
   /**
@@ -46,11 +46,33 @@ class WebappShareIntent
    */
   public function pickup(string $shareWith): ?array
   {
-    if (!isset($this->pending[$shareWith])) {
+    $key = $this->normalize($shareWith);
+    if (!isset($this->pending[$key])) {
       return null;
     }
-    $targets = $this->pending[$shareWith];
-    unset($this->pending[$shareWith]);
+    $targets = $this->pending[$key];
+    unset($this->pending[$key]);
     return $targets;
+  }
+
+  /**
+   * Normalize a federated cloud-id for keying. NC rewrites the recipient
+   * address between the controller's announce() and the decorator's
+   * pickup() — notably prepending the `https://` scheme to the host part
+   * (`bob@bob.example` -> `bob@https://bob.example`). Strip the scheme and
+   * lowercase the host so both sides land on the same key.
+   */
+  private function normalize(string $shareWith): string
+  {
+    $at = strrpos($shareWith, '@');
+    if ($at === false) {
+      return strtolower($shareWith);
+    }
+    $user = substr($shareWith, 0, $at);
+    $host = substr($shareWith, $at + 1);
+    // Drop any leading scheme (http:// or https://) and a trailing slash.
+    $host = preg_replace('#^https?://#i', '', $host) ?? $host;
+    $host = rtrim($host, '/');
+    return $user . '@' . strtolower($host);
   }
 }

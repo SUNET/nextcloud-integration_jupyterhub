@@ -61,12 +61,21 @@ class Application extends App implements IBootstrap
     $context->registerEventListener(NodeRenamedEvent::class, HasNotebookMetadataListener::class);
     $context->registerEventListener(NodeDeletedEvent::class, HasNotebookMetadataListener::class);
 
+  }
+
+  public function boot(IBootContext $context): void
+  {
     // Globally swap NC's ICloudFederationProviderManager for our decorator.
+    // IRegistrationContext::registerService() binds in the app container,
+    // but NC stock resolves ICloudFederationProviderManager off the server
+    // container — so the app-level override never reaches stock. Register
+    // the alias directly on the server container at boot time instead.
+    //
     // The decorator forwards every method to the wrapped instance and only
     // rewrites the outbound payload when an originating IShare carries our
-    // webapp attribute — all other apps' federated traffic passes through
+    // webapp attribute. All other apps' federated traffic passes through
     // unchanged. See CloudFederationProviderManagerDecorator for details.
-    $context->registerService(
+    \OC::$server->registerService(
       ICloudFederationProviderManager::class,
       function ($c) {
         return new CloudFederationProviderManagerDecorator(
@@ -79,9 +88,5 @@ class Application extends App implements IBootstrap
         );
       },
     );
-  }
-
-  public function boot(IBootContext $context): void
-  {
   }
 }
