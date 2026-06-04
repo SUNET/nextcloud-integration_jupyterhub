@@ -88,6 +88,22 @@ def get_jwk_by_kid(domain: str, kid: str):
     return None
 
 
+def _norm_ocm(addr: str) -> str:
+    """Canonicalise an OCM address: strip a stray scheme NC sometimes
+    prefixes onto the host, drop a trailing slash, lowercase the host. The
+    identity portion is left untouched."""
+    i = addr.rfind('@')
+    if i == -1:
+        return addr
+    user, host = addr[:i], addr[i + 1:]
+    low = host.lower()
+    if low.startswith('https://'):
+        host = host[8:]
+    elif low.startswith('http://'):
+        host = host[7:]
+    return f'{user}@{host.rstrip("/").lower()}'
+
+
 # ---------------------------------------------------------------------------
 # Share store
 # ---------------------------------------------------------------------------
@@ -529,14 +545,19 @@ class OpenHandler(RequestHandler):
         if rec is None:
             raise HTTPError(404, 'no share record for this token')
 
-        if claims['sub'] != rec.owner:
-            raise HTTPError(403, 'JWT sub does not match stored owner')
-        if claims['aud'] != rec.share_with:
+        # JWT sub is the sharer's identifier on the sending server; the OCM
+        # address of the owner is therefore sub@<iss-host>. Compare that
+        # against the stored owner.
+        owner_from_jwt = f'{claims["sub"]}@{iss_domain}'
+        if _norm_ocm(owner_from_jwt) != _norm_ocm(rec.owner):
+            raise HTTPError(403, 'JWT sub/iss does not match stored owner')
+        if _norm_ocm(claims['aud']) != _norm_ocm(rec.share_with):
             raise HTTPError(403, 'JWT aud does not match stored shareWith')
 
-        log(f'opening share ({iss_domain}, {client_id}) for {rec.share_with}')
+        share_with = _norm_ocm(rec.share_with)
+        log(f'opening share ({iss_domain}, {client_id}) for {share_with}')
 
-        username = f'ocm:{rec.share_with}'
+        username = f'ocm:{share_with}'
         server_name = f'share-{client_id[:12]}'
         webdav = rec.protocol['webdav']
         webapp = rec.protocol['webapp']
