@@ -643,9 +643,14 @@ hub:
             else:
                 raise HTTPError(401, 'no alg param and JWK has no algorithm')
             sig_params_line = str(inner_list_item).strip()
+            # TLS terminates at the gateway; reconstruct the public https
+            # @target-uri from X-Forwarded-* so it matches what was signed.
+            fwd_proto = (handler.request.headers.get('X-Forwarded-Proto') or handler.request.protocol).split(',')[0].strip()
+            fwd_host = (handler.request.headers.get('X-Forwarded-Host') or handler.request.host).split(',')[0].strip()
+            target_uri = f'{fwd_proto}://{fwd_host}{handler.request.uri}'
             base = build_signature_base(
                 method=handler.request.method,
-                target_uri=handler.request.full_url(),
+                target_uri=target_uri,
                 headers=dict(handler.request.headers.get_all()),
                 components=list(covered),
                 sig_params_line=sig_params_line,
@@ -656,7 +661,7 @@ hub:
             try:
                 verify_signature_primitive(native_alg, jwk.key, bytes(sig_value), base)
             except InvalidSignature:
-                raise HTTPError(401, 'signature verification failed')
+                raise HTTPError(401, f'signature verification failed (target_uri={target_uri})')
 
         def verify_access_token(token):
             try:

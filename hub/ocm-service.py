@@ -341,9 +341,16 @@ def verify_ocm_signature(handler: RequestHandler, body: bytes, sender_domain: st
 
     sig_params_line = str(inner_list_item).strip()
 
+    # TLS terminates at the gateway, so request.full_url() would give
+    # http://…:<internal-port>. The sender signed the public https URL, so
+    # reconstruct @target-uri from the X-Forwarded-* headers.
+    fwd_proto = (handler.request.headers.get('X-Forwarded-Proto') or handler.request.protocol).split(',')[0].strip()
+    fwd_host = (handler.request.headers.get('X-Forwarded-Host') or handler.request.host).split(',')[0].strip()
+    target_uri = f'{fwd_proto}://{fwd_host}{handler.request.uri}'
+
     base = build_signature_base(
         method=handler.request.method,
-        target_uri=handler.request.full_url(),
+        target_uri=target_uri,
         headers=dict(handler.request.headers.get_all()),
         components=list(covered),
         sig_params_line=sig_params_line,
@@ -356,7 +363,7 @@ def verify_ocm_signature(handler: RequestHandler, body: bytes, sender_domain: st
     try:
         verify_signature_primitive(native_alg, jwk.key, bytes(sig_value), base)
     except InvalidSignature:
-        raise HTTPError(401, 'signature verification failed')
+        raise HTTPError(401, f'signature verification failed (target_uri={target_uri})')
 
 
 # ---------------------------------------------------------------------------
