@@ -16,23 +16,21 @@ use Psr\Log\LoggerInterface;
  * sender can compute the wire-level `target` field as the intersection
  * of what both ends can do.
  *
- * The peer's discovery payload (as advertised by the companion
- * ocmremotewebapp app on the receiving side) looks like:
+ * Per OCM-API#368 the peer's discovery payload advertises
+ * `webapp-receive` under the `folder` (or `file`) resource type, since
+ * `webapp` is a protocol name, not a resource type. ocmremotewebapp
+ * publishes:
  *
  *     "resourceTypes": [{
- *       "name": "webapp",
+ *       "name": "folder",
  *       "shareTypes": ["user"],
  *       "protocols": {
- *         "webapp": {},
  *         "webapp-receive": { "targets": ["blank", "redirect", "iframe"] }
  *       }
  *     }]
  *
- * The presence of `webapp` signals webapp-share support at all; the
- * `webapp-receive.targets` list declares which view targets the
- * receiver can render. We treat the latter as the authoritative list
- * and fall back to the full set only when a peer advertises `webapp`
- * but not yet `webapp-receive` (older shape).
+ * `webapp-receive.targets` is the authoritative list of view targets
+ * the receiver can render.
  */
 class WebappCapabilityDiscovery
 {
@@ -64,19 +62,17 @@ class WebappCapabilityDiscovery
       return [];
     }
     foreach ($provider->getResourceTypes() as $resource) {
-      if ($resource->getName() !== Application::WEBAPP_RESOURCE_TYPE) {
+      // Per OCM-API#368, webapp-receive lives under the resource type of
+      // the actual resource — folder (or file). We always share folders.
+      if ($resource->getName() !== Application::FOLDER_RESOURCE_TYPE
+        && $resource->getName() !== 'file'
+      ) {
         continue;
       }
       $protocols = $resource->getProtocols();
       $receive = $protocols['webapp-receive'] ?? null;
-      // Real signal: webapp-receive.targets.
       if (is_array($receive) && isset($receive['targets']) && is_array($receive['targets'])) {
         return $this->filterKnownTargets($receive['targets']);
-      }
-      // Older shape: only `webapp` present, no per-target capability.
-      // Assume the full set — we'll revise once peers advertise targets.
-      if (array_key_exists('webapp', $protocols) || array_key_exists(Application::WEBAPP_RESOURCE_TYPE, $protocols)) {
-        return self::ALL_TARGETS;
       }
     }
     return [];

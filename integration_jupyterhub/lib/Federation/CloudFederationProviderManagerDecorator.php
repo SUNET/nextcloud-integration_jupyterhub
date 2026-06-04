@@ -37,8 +37,9 @@ use Psr\Log\LoggerInterface;
  *      a matching announcement, we substitute the payload with a
  *      {@see WebappCloudFederationShare} carrying both a `webdav`
  *      entry (the token NC just minted) and a `webapp` entry (the
- *      announced viewMode). One outbound payload, multi-protocol,
- *      resourceType = webapp.
+ *      announced targets). One outbound payload, multi-protocol,
+ *      resourceType = folder (per OCM-API#368: `webapp` is a protocol
+ *      name, the underlying resource type is what's shared).
  *
  * Shares without a matching intent pass through unchanged so this app
  * stays out of the way of every other federated share on the box.

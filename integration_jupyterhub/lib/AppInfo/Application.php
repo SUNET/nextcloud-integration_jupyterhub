@@ -32,8 +32,13 @@ class Application extends App implements IBootstrap
 {
   public const APP_ID = 'integration_jupyterhub';
 
-  /** OCM resource type used for webapp shares sent by this app. */
-  public const WEBAPP_RESOURCE_TYPE = 'webapp';
+  /**
+   * OCM resource type used for webapp shares sent by this app. Per OCM
+   * spec (cs3org/OCM-API#368) `webapp` is a protocol name, NOT a resource
+   * type — the resource type is the underlying resource (`folder` here,
+   * since we always share notebook folders).
+   */
+  public const FOLDER_RESOURCE_TYPE = 'folder';
 
   public function __construct()
   {

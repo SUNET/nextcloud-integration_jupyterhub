@@ -10,26 +10,27 @@ use OC\Federation\CloudFederationShare;
 use OCA\Jupyter\AppInfo\Application;
 
 /**
- * OCM federation share of resource type {@see Application::WEBAPP_RESOURCE_TYPE}.
+ * OCM federation share of resource type {@see Application::FOLDER_RESOURCE_TYPE}.
  *
  * Extends Nextcloud's {@see CloudFederationShare} (which already
  * implements {@see \OCP\Federation\ICloudFederationShare}) so we reuse
  * the serializer and all the field setters. Specialises it for the OCM
  * webapp draft:
  *
- *  - resourceType is fixed to "webapp".
+ *  - resourceType is fixed to "folder" (the underlying resource type;
+ *    `webapp` is a protocol name, not a resource type, per OCM-API#368).
  *  - The `protocol` field is a multi-protocol envelope with top-level
- *    keys (no nested `options`) that matches the new shape NC already
- *    uses for exchange-token webdav:
+ *    keys (no nested `options`):
  *
  *        "protocol": {
  *          "name":   "multi",
  *          "webdav": { uri, sharedSecret, permissions, requirements? },
- *          "webapp": { uri, sharedSecret, target, permissions, … }
+ *          "webapp": { uri, sharedSecret, targets, permissions, … }
  *        }
  *
- *    `target` is a list of view targets the sender will accept the
- *    receiver to render in (intersection of both ends' caps).
+ *    `targets` is the list of view targets (blank/redirect/iframe) the
+ *    sender will accept the receiver to render in (intersection of both
+ *    ends' caps).
  *
  * Building the envelope is done in one shot via {@see setWebappShare()}.
  * NC's {@see CloudFederationShare::setProtocol()} is a whole-blob
@@ -70,7 +71,7 @@ class WebappCloudFederationShare extends CloudFederationShare
       $sharedBy,
       $sharedByDisplayName,
       $shareType,
-      Application::WEBAPP_RESOURCE_TYPE,
+      Application::FOLDER_RESOURCE_TYPE,
     );
     // Protocol is intentionally not initialised here. Callers must
     // invoke setWebappShare() before the share is sent — that single
@@ -103,7 +104,7 @@ class WebappCloudFederationShare extends CloudFederationShare
     $webapp = [
       'uri' => $webappUri,
       'sharedSecret' => $sharedSecret,
-      'target' => is_array($target) ? array_values($target) : [$target],
+      'targets' => is_array($target) ? array_values($target) : [$target],
       'permissions' => $permissions,
     ];
     if ($appName !== null) {
