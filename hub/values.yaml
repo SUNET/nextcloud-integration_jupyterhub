@@ -72,7 +72,9 @@ hub:
           except (ValueError, jwt.InvalidTokenError) as e:
             self.set_status(401); self.write(f'OCM token verification failed: {e}'); return
           username = f'ocm:{claims["aud"]}'
-          user = await self.auth_to_user({'name': username})
+          # Stash the access_token so refresh_user can re-validate it (it is
+          # the only credential these synthetic users have).
+          user = await self.auth_to_user({'name': username, 'auth_state': {'ocm_access_token': access_token}})
           self.set_login_cookie(user)
           self.redirect(next_url)
 
@@ -133,6 +135,23 @@ hub:
           spawner.environment['NEXTCLOUD_ACCESS_TOKEN'] = access_token
 
         async def refresh_user(self, user, handler=None):
+          # OCM synthetic users authenticate with the share access_token, not
+          # the Nextcloud OAuth flow, so they have no OAuth refresh token. Keep
+          # the session only while that access_token still verifies (signature
+          # + exp); when it lapses, drop the session rather than bouncing them
+          # into Nextcloud's OAuth login (which they cannot complete).
+          if user.name.startswith('ocm:'):
+            auth_state = await user.get_auth_state()
+            token = (auth_state or {}).get('ocm_access_token')
+            if not token:
+              return False
+            try:
+              _verify_ocm_jwt(token)
+            except (ValueError, jwt.InvalidTokenError) as e:
+              if debug:
+                print(f'OCM access_token no longer valid for {user}: {e}')
+              return False
+            return True
           auth_state = await user.get_auth_state()
           if not auth_state:
             if debug:
