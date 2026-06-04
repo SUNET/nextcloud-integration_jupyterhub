@@ -20,6 +20,7 @@ import hmac
 import html as html_mod
 import json
 import os
+import sqlite3
 import threading
 import time
 import urllib.parse
@@ -124,27 +125,67 @@ class ShareRecord:
 
 
 class ShareStore:
-    def __init__(self):
+    """SQLite-backed so share records survive hub restarts. The DB lives on
+    the hub's persistent volume (OCM_STORE_PATH, default /srv/jupyterhub)."""
+
+    _COLS = ('sender_domain', 'client_id', 'sender', 'owner', 'share_with',
+             'name', 'provider_id', 'share_type', 'resource_type',
+             'protocol', 'created_at')
+
+    def __init__(self, path: str) -> None:
         self._lock = threading.Lock()
-        self._records: dict[tuple[str, str], ShareRecord] = {}
+        self._path = path
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                'CREATE TABLE IF NOT EXISTS shares ('
+                'sender_domain TEXT NOT NULL, client_id TEXT NOT NULL,'
+                'sender TEXT, owner TEXT, share_with TEXT, name TEXT,'
+                'provider_id TEXT, share_type TEXT, resource_type TEXT,'
+                'protocol TEXT, created_at REAL,'
+                'PRIMARY KEY (sender_domain, client_id))'
+            )
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self._path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def put(self, rec: ShareRecord) -> None:
-        with self._lock:
-            self._records[(rec.sender_domain, rec.client_id)] = rec
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                'INSERT OR REPLACE INTO shares (' + ','.join(self._COLS) + ') '
+                'VALUES (' + ','.join('?' * len(self._COLS)) + ')',
+                (rec.sender_domain, rec.client_id, rec.sender, rec.owner,
+                 rec.share_with, rec.name, rec.provider_id, rec.share_type,
+                 rec.resource_type, json.dumps(rec.protocol), rec.created_at),
+            )
 
     def get(self, sender_domain: str, client_id: str) -> ShareRecord | None:
         now = time.time()
-        with self._lock:
-            rec = self._records.get((sender_domain, client_id))
-            if rec is None:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                'SELECT * FROM shares WHERE sender_domain=? AND client_id=?',
+                (sender_domain, client_id),
+            ).fetchone()
+            if row is None:
                 return None
-            if now - rec.created_at > SHARE_RECORD_TTL:
-                del self._records[(sender_domain, client_id)]
+            if now - row['created_at'] > SHARE_RECORD_TTL:
+                conn.execute(
+                    'DELETE FROM shares WHERE sender_domain=? AND client_id=?',
+                    (sender_domain, client_id),
+                )
                 return None
-            return rec
+            return ShareRecord(
+                sender_domain=row['sender_domain'], client_id=row['client_id'],
+                sender=row['sender'], owner=row['owner'],
+                share_with=row['share_with'], name=row['name'],
+                provider_id=row['provider_id'], share_type=row['share_type'],
+                resource_type=row['resource_type'],
+                protocol=json.loads(row['protocol']), created_at=row['created_at'],
+            )
 
 
-store = ShareStore()
+store = ShareStore(os.environ.get('OCM_STORE_PATH', '/srv/jupyterhub/ocm-shares.db'))
 
 
 # ---------------------------------------------------------------------------
