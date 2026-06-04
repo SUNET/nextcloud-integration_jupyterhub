@@ -381,6 +381,7 @@ hub:
         """
         import base64
         import hashlib
+        import hmac
         import html as html_mod
         import json
         import os
@@ -540,7 +541,7 @@ hub:
                     expected = hashlib.sha512(body).digest()
                 else:
                     continue
-                if not hashlib.compare_digest(expected, digest_bytes):
+                if not hmac.compare_digest(expected, digest_bytes):
                     return False
                 matched = True
             return matched

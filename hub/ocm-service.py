@@ -16,6 +16,7 @@ POST /services/ocm/open
 """
 import base64
 import hashlib
+import hmac
 import html as html_mod
 import json
 import os
@@ -206,7 +207,7 @@ def verify_content_digest(header_value: str, body: bytes) -> bool:
             expected = hashlib.sha512(body).digest()
         else:
             continue
-        if not hashlib.compare_digest(expected, digest_bytes):
+        if not hmac.compare_digest(expected, digest_bytes):
             return False
         matched = True
     return matched
