@@ -34,21 +34,23 @@ class OCMHubBackChannel
   ) {
   }
 
+  /**
+   * @throws OCMBackChannelException if the hub does not acknowledge the
+   *   envelope; the caller must then abort the outbound OCM share.
+   */
   public function push(WebappCloudFederationShare $share, string $sharedSecret): void
   {
     $hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
     if ($hubBase === '') {
-      $this->logger->debug('OCM back channel: no jupyter_url configured, skipping');
-      return;
+      // No hub configured at all — the webapp share cannot function, so
+      // this is a hard failure rather than a silent skip.
+      throw new OCMBackChannelException('JupyterHub URL is not configured');
     }
 
     try {
       $token = $this->tokenProvider->getToken($sharedSecret);
     } catch (\Throwable $e) {
-      $this->logger->warning('OCM back channel: cannot resolve clientId from sharedSecret', [
-        'exception' => $e,
-      ]);
-      return;
+      throw new OCMBackChannelException('Cannot resolve clientId from sharedSecret', 0, $e);
     }
     $clientId = (string)$token->getId();
 
@@ -88,17 +90,28 @@ class OCMHubBackChannel
         'body' => $signed['body'],
         'timeout' => 15,
       ]);
-      $this->logger->debug('OCM back channel pushed', [
-        'url' => $url,
-        'status' => $response->getStatusCode(),
-        'providerId' => $share->getProviderId(),
-        'clientId' => $clientId,
-      ]);
+    } catch (OCMBackChannelException $e) {
+      throw $e;
     } catch (\Throwable $e) {
-      $this->logger->warning('OCM back channel push failed', [
-        'exception' => $e,
-        'url' => $url,
-      ]);
+      $this->logger->warning('OCM back channel push failed', ['exception' => $e, 'url' => $url]);
+      throw new OCMBackChannelException('Back-channel push to JupyterHub failed', 0, $e);
     }
+
+    $status = $response->getStatusCode();
+    if ($status < 200 || $status >= 300) {
+      $this->logger->warning('OCM back channel push rejected', [
+        'url' => $url,
+        'status' => $status,
+        'body' => substr((string)$response->getBody(), 0, 500),
+      ]);
+      throw new OCMBackChannelException(sprintf('JupyterHub rejected the share (HTTP %d)', $status));
+    }
+
+    $this->logger->debug('OCM back channel pushed', [
+      'url' => $url,
+      'status' => $status,
+      'providerId' => $share->getProviderId(),
+      'clientId' => $clientId,
+    ]);
   }
 }
