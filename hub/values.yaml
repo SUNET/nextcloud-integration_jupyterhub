@@ -137,6 +137,14 @@ hub:
             # non-root jovyan user anyway — it lands in the bounding set, not
             # the effective set — and there is no /dev/fuse in the pod.)
             return
+          if user.name.startswith('ocm:'):
+            # An OCM account reached pre_spawn without ocm_share, i.e. it tried
+            # to start a server itself — "Start My Server" / a self-named server
+            # from the hub home panel, or re-accessing a culled share server
+            # without re-opening. OCM accounts may ONLY run servers created by
+            # the OCM share-launch flow (which always carries ocm_share), so
+            # refuse. Raising here aborts the spawn before any pod is created.
+            raise Exception('OCM accounts cannot start servers directly; open the share from the OCM Remote WebApp.')
           auth_state = await user.get_auth_state()
           if not auth_state:
             return
