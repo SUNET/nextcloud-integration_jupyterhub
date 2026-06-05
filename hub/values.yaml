@@ -131,13 +131,11 @@ hub:
             spawner.environment['OCM_RESOURCE_NAME'] = ocm.get('resource_name', '')
             spawner.environment['OCM_SHARER'] = ocm.get('sharer', '')
             spawner.environment['OCM_PROVIDER_ID'] = ocm.get('provider_id', '')
-            extra = spawner.extra_container_config or {}
-            sec = dict(extra.get('securityContext') or {})
-            caps = dict(sec.get('capabilities') or {})
-            caps['add'] = list({*caps.get('add', []), 'SYS_ADMIN'})
-            sec['capabilities'] = caps
-            extra['securityContext'] = sec
-            spawner.extra_container_config = extra
+            # ocm-sync (in the lab image) pulls the share over WebDAV in pure
+            # userspace, so no extra capabilities are needed. (SYS_ADMIN was
+            # added here for a FUSE mount, but it is ineffective for the
+            # non-root jovyan user anyway — it lands in the bounding set, not
+            # the effective set — and there is no /dev/fuse in the pod.)
             return
           auth_state = await user.get_auth_state()
           if not auth_state:
@@ -1009,5 +1007,7 @@ singleuser:
         c.NotebookApp.tornado_settings = {
             'headers': { 'Content-Security-Policy': "frame-ancestors *;" }
         }
-        os.system('/usr/local/bin/nc-sync')
+        # OCM share servers sync the shared folder via ocm-sync (WebDAV +
+        # bearer); regular OAuth users sync their own Files via nc-sync.
+        os.system('if [ -n "$OCM_WEBDAV_URI" ]; then /usr/local/bin/ocm-sync; else /usr/local/bin/nc-sync; fi')
       mode: 0644
