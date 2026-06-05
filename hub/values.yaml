@@ -165,11 +165,19 @@ hub:
               return True
             try:
               _verify_ocm_jwt(token)
+              return True
             except (ValueError, jwt.InvalidTokenError) as e:
+              # Stored session token has lapsed. Allow only when this refresh
+              # is driven by the OCM admin service starting a fresh share
+              # open (pre_spawn_start re-validates that share's bearer); a
+              # day-old token must not block a new, freshly-verified launch.
+              # For the user's own ongoing access, end the session.
+              requester = getattr(getattr(handler, 'current_user', None), 'name', None)
+              if requester is not None and requester != user.name:
+                return True
               if debug:
                 print(f'OCM access_token no longer valid for {user}: {e}')
               return False
-            return True
           auth_state = await user.get_auth_state()
           if not auth_state:
             if debug:
