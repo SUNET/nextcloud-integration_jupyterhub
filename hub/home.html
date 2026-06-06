@@ -84,18 +84,22 @@
               </td>
               {# actions #}
               <td>
+                {# OCM accounts don't manage server lifecycle from here: they
+                   can't start (pre_spawn blocks it), and stop/delete are
+                   handled by the system on share leave/unshare (not by the
+                   remote user). Only the access link (URL column) remains. #}
+                {% if not is_ocm %}
                 <a role="button"
                    class="stop-server btn btn-xs btn-danger{% if not spawner.active %} hidden{% endif %}"
                    id="stop-{{ spawner.name }}">stop</a>
-                {% if not is_ocm %}
                 <a role="button"
                    class="start-server btn btn-xs btn-primary {% if spawner.active %}hidden{% endif %}"
                    id="start-{{ spawner.name }}"
                    href="{{ base_url }}spawn/{{ user.name }}/{{ spawner.name }}">start</a>
-                {% endif %}
                 <button role="button"
                         class="delete-server btn btn-xs btn-danger{% if spawner.active %} hidden{% endif %}"
                         id="delete-{{ spawner.name }}">delete</button>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
