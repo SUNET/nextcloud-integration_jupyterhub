@@ -479,6 +479,14 @@ def hub_ensure_user(name: str) -> None:
     r = _hub_request('POST', f'/users/{quote(name, safe="")}')
     if r.status_code not in (201, 409):
         raise HTTPError(502, f'failed to create hub user: {r.status_code} {r.text[:200]}')
+    # Mark this as an OCM account via membership in the 'ocm' group. The hub
+    # uses the group (not a name-prefix heuristic) to block self-spawn and hide
+    # the spawn UI. Set it here, at the single creation point, so it is in
+    # place before the first spawn.
+    _hub_request('POST', '/groups/ocm')  # 201 created or 409 exists
+    rg = _hub_request('POST', '/groups/ocm/users', json={'users': [name]})
+    if rg.status_code not in (200, 201):
+        log(f'warning: could not add {name} to ocm group: {rg.status_code} {rg.text[:200]}')
 
 
 def hub_start_named_server(user: str, server: str, user_options: dict) -> None:
