@@ -5,6 +5,10 @@ hub:
   # servers must be enabled or the hub 400s the start and the /share-<id>/
   # path 404s on the default server.
   allowNamedServers: true
+  # Custom home.html: hides the server-creation/start controls for OCM
+  # accounts (members of the ocm group), keeping the named-server list.
+  templatePaths:
+    - /usr/local/etc/jupyterhub/custom-templates
   config:
     Authenticator:
       auto_login: true
@@ -59,6 +63,15 @@ hub:
           issuer=issuer,
           options={'require': ['iss', 'sub', 'aud', 'exp', 'client_id'], 'verify_aud': False},
         )
+
+      def _is_ocm_user(user):
+        # OCM accounts are tagged by membership in the 'ocm' group (set by the
+        # OCM service at user creation, before any spawn). This is the robust
+        # marker used to gate self-spawn and the spawn UI — not a name prefix.
+        try:
+          return any(g.name == 'ocm' for g in user.orm_user.groups)
+        except Exception:
+          return False
 
       class OCMLoginHandler(BaseHandler):
         # The cross-origin handoff form carries no JupyterHub _xsrf token; the
@@ -137,7 +150,7 @@ hub:
             # non-root jovyan user anyway — it lands in the bounding set, not
             # the effective set — and there is no /dev/fuse in the pod.)
             return
-          if user.name.startswith('ocm:'):
+          if _is_ocm_user(user):
             # An OCM account reached pre_spawn without ocm_share, i.e. it tried
             # to start a server itself — "Start My Server" / a self-named server
             # from the hub home panel, or re-accessing a culled share server
@@ -160,7 +173,7 @@ hub:
           # the session only while that access_token still verifies (signature
           # + exp); when it lapses, drop the session rather than bouncing them
           # into Nextcloud's OAuth login (which they cannot complete).
-          if user.name.startswith('ocm:'):
+          if _is_ocm_user(user):
             auth_state = await user.get_auth_state()
             token = (auth_state or {}).get('ocm_access_token')
             if not token:
@@ -257,7 +270,11 @@ hub:
               ],
               "scopes": [
                 "admin:users",
-                "admin:servers"
+                "admin:servers",
+                # manage the 'ocm' group: hub_ensure_user creates it and adds
+                # the share recipient so the hub can mark OCM accounts (gate
+                # self-spawn, hide spawn UI) without a name-prefix heuristic.
+                "admin:groups"
               ]
           },
           {
@@ -310,6 +327,121 @@ hub:
           os.environ['JUPYTERHUB_OCM_API_KEY']: "ocm",
       }
   extraFiles:
+    home.html:
+      mountPath: /usr/local/etc/jupyterhub/custom-templates/home.html
+      stringData: |
+        {% extends "page.html" %}
+        {# Forked from JupyterHub 5.4.4 stock home.html. Only change vs stock: hide
+           the server-creation / start affordances for OCM accounts (members of the
+           'ocm' group) — they may only launch servers via the OCM Remote WebApp
+           share flow, enforced in pre_spawn_start. The named-server list and its
+           access links stay visible so a user with several shares can switch between
+           them. Keep in sync with the stock template on JupyterHub upgrades. #}
+        {% if announcement_home is string %}
+          {% set announcement = announcement_home %}
+        {% endif %}
+        {% block main %}
+          {% set is_ocm = 'ocm' in (user.orm_user.groups | map(attribute='name') | list) %}
+          <div class="container">
+            <h1 class="visually-hidden">JupyterHub home page</h1>
+            <div class="row">
+              <div class="text-center">
+                {% if default_server.active %}<a id="stop" role="button" class="btn btn-lg btn-danger">Stop My Server</a>{% endif %}
+                {% if not is_ocm %}
+                <a id="start"
+                   role="button"
+                   class="btn btn-lg btn-primary"
+                   href="{{ url }}">
+                  {% if not default_server.active %}Start{% endif %}
+                  My Server
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% if allow_named_servers %}
+              <h2>Named Servers</h2>
+              {% if is_ocm %}
+                <p>Each shared notebook you open from the OCM Remote WebApp appears
+                   below. Open one to switch to it.</p>
+              {% else %}
+                <p>
+                  In addition to your default server,
+                  you may have additional
+                  {% if named_server_limit_per_user > 0 %}{{ named_server_limit_per_user }}{% endif %}
+                  server(s) with names.
+                  This allows you to have more than one server running at the same time.
+                </p>
+              {% endif %}
+              {% set named_spawners = user.all_spawners(include_default=False)|list %}
+              <table class="server-table table table-striped">
+                <thead>
+                  <tr>
+                    <th>Server name</th>
+                    <th>URL</th>
+                    <th>Last activity</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if not is_ocm %}
+                  <tr class="home-server-row add-server-row">
+                    <td colspan="4">
+                      <div class="input-group">
+                        <input class="new-server-name form-control"
+                               aria-label="server name"
+                               placeholder="name-your-server">
+                        <button role="button"
+                                type="button"
+                                class="new-server-btn btn btn-xs btn-primary">Add New Server</button>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% for spawner in named_spawners %}
+                    <tr class="home-server-row" data-server-name="{{ spawner.name }}">
+                      {# name #}
+                      <td>{{ spawner.name }}</td>
+                      {# url #}
+                      <td>
+                        <a class="server-link {% if not spawner.ready %}hidden{% endif %}"
+                           href="{{ user.server_url(spawner.name) }}">{{ user.server_url(spawner.name) }}</a>
+                      </td>
+                      {# activity #}
+                      <td class='time-col'>
+                        {% if spawner.last_activity %}
+                          {{ spawner.last_activity.isoformat() + 'Z' }}
+                        {% else %}
+                          Never
+                        {% endif %}
+                      </td>
+                      {# actions #}
+                      <td>
+                        <a role="button"
+                           class="stop-server btn btn-xs btn-danger{% if not spawner.active %} hidden{% endif %}"
+                           id="stop-{{ spawner.name }}">stop</a>
+                        {% if not is_ocm %}
+                        <a role="button"
+                           class="start-server btn btn-xs btn-primary {% if spawner.active %}hidden{% endif %}"
+                           id="start-{{ spawner.name }}"
+                           href="{{ base_url }}spawn/{{ user.name }}/{{ spawner.name }}">start</a>
+                        {% endif %}
+                        <button role="button"
+                                class="delete-server btn btn-xs btn-danger{% if spawner.active %} hidden{% endif %}"
+                                id="delete-{{ spawner.name }}">delete</button>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% endif %}
+          </div>
+        {% endblock main %}
+        {% block script %}
+          {{ super() }}
+          <script type="text/javascript">
+            require(["home"]);
+          </script>
+        {% endblock script %}
     refresh-token.py: 
       mountPath: /usr/local/etc/jupyterhub/refresh-token.py
       stringData: |
@@ -480,6 +612,14 @@ hub:
             r = _hub_request('POST', f'/users/{quote(name, safe="")}')
             if r.status_code not in (201, 409):
                 raise HTTPError(502, f'failed to create hub user: {r.status_code} {r.text[:200]}')
+            # Mark this as an OCM account via membership in the 'ocm' group. The
+            # hub uses the group (not a name-prefix heuristic) to block
+            # self-spawn and hide the spawn UI. Set it here, at the single
+            # creation point, so it is in place before the first spawn.
+            _hub_request('POST', '/groups/ocm')  # 201 created or 409 exists
+            rg = _hub_request('POST', '/groups/ocm/users', json={'users': [name]})
+            if rg.status_code not in (200, 201):
+                log(f'warning: could not add {name} to ocm group: {rg.status_code} {rg.text[:200]}')
 
         def hub_start_named_server(user, server, user_options):
             r = _hub_request('POST', f'/users/{quote(user, safe="")}/servers/{quote(server, safe="")}', json=user_options)
