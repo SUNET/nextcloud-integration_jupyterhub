@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Mikael Nordin <kano@sunet.se>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Lint Python (hub)
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - stable*
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    name: black + isort + syntax
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install black isort
+
+      - name: Syntax check (py_compile)
+        run: python -m py_compile hub/*.py
+
+      - name: isort --check-only
+        run: isort --check-only --diff hub/
+
+      - name: black --check
+        run: black --check --diff hub/

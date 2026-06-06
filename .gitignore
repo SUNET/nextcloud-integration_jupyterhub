@@ -9,3 +9,7 @@ integration_jupyterhub/build/
 integration_jupyterhub/sign/
 /.php_cs.cache
 js/*hot-update.*
+
+# Python bytecode
+__pycache__/
+*.pyc
