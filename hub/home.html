@@ -47,7 +47,7 @@
             <th>Server name</th>
             <th>URL</th>
             <th>Last activity</th>
-            <th>Actions</th>
+            {% if not is_ocm %}<th>Actions</th>{% endif %}
           </tr>
         </thead>
         <tbody>
@@ -82,13 +82,12 @@
                   Never
                 {% endif %}
               </td>
-              {# actions #}
+              {# actions — hidden entirely for OCM accounts: they can't start
+                 (pre_spawn blocks it), and stop/delete are system-managed on
+                 share leave/unshare (not by the remote user). Only the access
+                 link (URL column) remains. #}
+              {% if not is_ocm %}
               <td>
-                {# OCM accounts don't manage server lifecycle from here: they
-                   can't start (pre_spawn blocks it), and stop/delete are
-                   handled by the system on share leave/unshare (not by the
-                   remote user). Only the access link (URL column) remains. #}
-                {% if not is_ocm %}
                 <a role="button"
                    class="stop-server btn btn-xs btn-danger{% if not spawner.active %} hidden{% endif %}"
                    id="stop-{{ spawner.name }}">stop</a>
@@ -99,8 +98,8 @@
                 <button role="button"
                         class="delete-server btn btn-xs btn-danger{% if spawner.active %} hidden{% endif %}"
                         id="delete-{{ spawner.name }}">delete</button>
-                {% endif %}
               </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
