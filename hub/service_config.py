@@ -74,8 +74,14 @@ c.JupyterHub.services = [
         },
     },
 ]
-c.JupyterHub.admin_users = {"refresh-token", "ocm"}
-c.JupyterHub.api_tokens = {
+# The refresh-token and ocm services get their privileges from the roles
+# defined in load_roles above (RBAC), so JupyterHub.admin_users — deprecated
+# since 0.7.2 in favour of Authenticator.admin_users, and meant for human
+# admins, not services — is not needed and has been dropped (issue #10).
+#
+# service_tokens replaces the pending-deprecated JupyterHub.api_tokens
+# (deprecated since 0.8) for assigning API tokens to services (issue #10).
+c.JupyterHub.service_tokens = {
     os.environ["JUPYTERHUB_API_KEY"]: "refresh-token",
     os.environ["JUPYTERHUB_OCM_API_KEY"]: "ocm",
 }
