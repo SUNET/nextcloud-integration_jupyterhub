@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Mikael Nordin <kano@sunet.se>
+// SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 const path = require('path')
 const webpackConfig = require('@nextcloud/webpack-vue-config')

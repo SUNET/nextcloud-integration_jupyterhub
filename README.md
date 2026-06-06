@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: Mikael Nordin <kano@sunet.se>
+SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se>
 SPDX-License-Identifier: CC0-1.0
 -->
 

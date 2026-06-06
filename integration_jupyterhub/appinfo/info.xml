@@ -2,7 +2,7 @@
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
   <!--
-    SPDX-FileCopyrightText: Mikael Nordin <kano@sunet.se>
+    SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se>
     SPDX-License-Identifier: CC0-1.0
     -->
   <id>integration_jupyterhub</id>
@@ -13,7 +13,7 @@
   </description>
   <version>0.2.5</version>
   <licence>agpl</licence>
-  <author mail="kano@sunet.se" homepage="https://github.com/SUNET/nextcloud-jupyter">Mikael Nordin</author>
+  <author mail="kano@sunet.se" homepage="https://github.com/SUNET/nextcloud-jupyter">Micke Nordin</author>
   <namespace>Jupyter</namespace>
   <category>integration</category>
   <bugs>https://github.com/SUNET/nextcloud-jupyter/issues</bugs>

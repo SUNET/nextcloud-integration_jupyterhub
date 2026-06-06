@@ -1,10 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Jupyter
-Upstream-Contact: Mikael Nordin <kano@sunet.se>
+Upstream-Contact: Micke Nordin <kano@sunet.se>
 Source: https://github.com/nextcloud/profiler
 
 Files: integration_jupyterhub/package-lock.json integration_jupyterhub/package.json integration_jupyterhub/composer.json integration_jupyterhub/composer.lock screenshots/*.png
-Copyright: Mikael Nordin <kano@sunet.se>
+Copyright: Micke Nordin <kano@sunet.se>
 License: AGPL-3.0-or-later
 
 Files: integration_jupyterhub/l10n/*.js integration_jupyterhub/l10n/*.json
@@ -16,5 +16,5 @@ Copyright: Jupyter Development Team <https://jupyter.org/governance/projectlicen
 License: BSD-3-Clause
 
 Files: hub/oauth_config.py hub/service_config.py hub/ocm-service.py hub/values.yaml publiccode.yml renovate.json
-Copyright: Mikael Nordin <kano@sunet.se>
+Copyright: Micke Nordin <kano@sunet.se>
 License: AGPL-3.0-or-later

@@ -1,7 +1,7 @@
 <?php
 
 declare(strict_types=1);
-// SPDX-FileCopyrightText: Enrique Pérez Arnaud <eperez@emergya.com>, Mikael Nordin <kano@sunet.se>
+// SPDX-FileCopyrightText: Enrique Pérez Arnaud <eperez@emergya.com>, Micke Nordin <kano@sunet.se>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 namespace OCA\Jupyter\Commands;
