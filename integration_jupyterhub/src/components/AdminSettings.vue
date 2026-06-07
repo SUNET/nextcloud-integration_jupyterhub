@@ -25,7 +25,7 @@
 
         <div class="webapp-sharing">
           <NcCheckboxRadioSwitch
-            v-model:checked="webappSharingEnabled"
+            v-model="webappSharingEnabled"
             type="switch"
           >
             {{ t('integration_jupyterhub', 'Enable OCM webapp sharing (off by default)') }}
@@ -40,9 +40,9 @@
           <NcCheckboxRadioSwitch
             v-for="target in allTargets"
             :key="target.value"
-            :checked="allowedTargets.includes(target.value)"
+            v-model="allowedTargets"
+            :value="target.value"
             type="checkbox"
-            @update:checked="toggleTarget(target.value, $event)"
           >
             {{ target.label }}
           </NcCheckboxRadioSwitch>
@@ -103,15 +103,6 @@ export default {
   },
 
   methods: {
-    toggleTarget(value, checked) {
-      if (checked) {
-        if (!this.allowedTargets.includes(value)) {
-          this.allowedTargets = [...this.allowedTargets, value]
-        }
-      } else {
-        this.allowedTargets = this.allowedTargets.filter(t => t !== value)
-      }
-    },
     async save() {
       let url = this.jupyterUrl.trim()
       if (url.endsWith('/')) {
