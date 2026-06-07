@@ -123,11 +123,7 @@ class WebappShareController extends Controller
       return new DataResponse(['error' => $e->getMessage()], Http::STATUS_BAD_GATEWAY);
     }
 
-    // Stash the configured access_token lifetime on the just-minted refresh
-    // token, before it's ever exchanged. The sender's OCM token endpoint
-    // honours `ocm_access_token_ttl` from the token scope; absent it, the
-    // endpoint's 3600 default applies. Best-effort — minting still works
-    // without it.
+    // Set the access_token TTL on the new refresh token before first use.
     $this->applyAccessTokenTtl($created->getToken());
 
     return new DataResponse([
@@ -223,26 +219,14 @@ class WebappShareController extends Controller
    *
    * @param list<string> $permissions output of {@see normalisePermissions()}
    */
-  /**
-   * The admin-configured OCM access_token lifetime (seconds) for shares
-   * created by this app. Default 1 hour; clamped to 5 min .. 24 h to
-   * match the sender NC core's accepted range.
-   */
+  // Admin-configured access_token lifetime (s), default 3600, clamped 300..86400.
   private function accessTokenTtl(): int
   {
     $ttl = (int)$this->config->getAppValue(Application::APP_ID, 'ocm_access_token_ttl', '3600');
     return max(300, min(86400, $ttl));
   }
 
-  /**
-   * Record the configured OCM access_token lifetime on the share's refresh
-   * token (a permanent oc_authtoken) by stashing it on the token scope.
-   * The sender's OCM token endpoint reads `ocm_access_token_ttl` there when
-   * minting. This is the generic "minter sets the TTL after creation"
-   * mechanism — it does not touch federated file sharing. Best-effort: any
-   * failure leaves the token without an override, so the endpoint's 3600
-   * default applies.
-   */
+  // Stash the TTL on the share's refresh-token scope; the OCM token endpoint mints with it. Best-effort.
   private function applyAccessTokenTtl(string $refreshToken): void
   {
     if ($refreshToken === '') {

@@ -45,8 +45,7 @@ class ConfigController extends Controller
       );
     }
     if ($ocm_access_token_ttl !== null) {
-      // Seconds. Clamp to 5 min .. 24 h to match the sender NC core's range.
-      $ttl = max(300, min(86400, $ocm_access_token_ttl));
+      $ttl = max(300, min(86400, $ocm_access_token_ttl)); // clamp 300..86400
       $this->config->setAppValue(Application::APP_ID, 'ocm_access_token_ttl', (string)$ttl);
     }
     return new DataResponse(['status' => 'success']);
