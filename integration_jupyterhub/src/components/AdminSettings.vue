@@ -42,6 +42,7 @@
             :key="target.value"
             v-model="allowedTargets"
             :value="target.value"
+            name="webapp-allowed-targets"
             type="checkbox"
           >
             {{ target.label }}
