@@ -33,9 +33,6 @@
           <NcCheckboxRadioSwitch v-model="permissions.write" type="checkbox">
             {{ t('integration_jupyterhub', 'Write — let the recipient save changes back (two-way sync)') }}
           </NcCheckboxRadioSwitch>
-          <NcCheckboxRadioSwitch v-model="permissions.share" type="checkbox">
-            {{ t('integration_jupyterhub', 'Allow the recipient to re-share') }}
-          </NcCheckboxRadioSwitch>
         </div>
         <p class="hint">
           {{ t('integration_jupyterhub', 'Read is always granted. The view target is set by the instance administrator and negotiated with the recipient.') }}
@@ -80,7 +77,7 @@ export default {
     return {
       open: true,
       shareWith: '',
-      permissions: { read: true, write: false, share: false },
+      permissions: { read: true, write: false },
       sending: false,
       errorMessage: '',
     }
@@ -103,9 +100,6 @@ export default {
       const permissions = ['read']
       if (this.permissions.write) {
         permissions.push('write')
-      }
-      if (this.permissions.share) {
-        permissions.push('share')
       }
       try {
         const response = await axios.post(
