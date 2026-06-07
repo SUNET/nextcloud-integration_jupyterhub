@@ -27,7 +27,7 @@
       <div class="field">
         <label>{{ t('integration_jupyterhub', 'Permissions') }}</label>
         <div class="perms">
-          <NcCheckboxRadioSwitch :checked="true" :disabled="true" type="checkbox">
+          <NcCheckboxRadioSwitch v-model:checked="permissions.read" :disabled="true" type="checkbox">
             {{ t('integration_jupyterhub', 'Read') }}
           </NcCheckboxRadioSwitch>
           <NcCheckboxRadioSwitch v-model:checked="permissions.write" type="checkbox">
@@ -80,7 +80,7 @@ export default {
     return {
       open: true,
       shareWith: '',
-      permissions: { write: false, share: false },
+      permissions: { read: true, write: false, share: false },
       sending: false,
       errorMessage: '',
     }
