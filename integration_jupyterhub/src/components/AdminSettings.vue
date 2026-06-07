@@ -35,6 +35,22 @@
           </p>
         </div>
 
+        <div v-if="webappSharingEnabled" class="webapp-targets">
+          <label class="targets-label">{{ t('integration_jupyterhub', 'Offered view targets') }}</label>
+          <NcCheckboxRadioSwitch
+            v-for="target in allTargets"
+            :key="target.value"
+            :checked="allowedTargets.includes(target.value)"
+            type="checkbox"
+            @update:checked="toggleTarget(target.value, $event)"
+          >
+            {{ target.label }}
+          </NcCheckboxRadioSwitch>
+          <p class="hint">
+            {{ t('integration_jupyterhub', 'Every webapp share offers these targets; the recipient renders whichever it supports. At least one must be selected.') }}
+          </p>
+        </div>
+
         <NcButton
           :wide="true"
           @click="save"
@@ -72,19 +88,44 @@ export default {
     return {
       jupyterUrl: loadState('integration_jupyterhub', 'jupyter_url', ''),
       webappSharingEnabled: loadState('integration_jupyterhub', 'webapp_sharing_enabled', false),
+      allowedTargets: loadState('integration_jupyterhub', 'webapp_allowed_targets', ['iframe', 'redirect', 'blank']),
     }
   },
 
+  computed: {
+    allTargets() {
+      return [
+        { value: 'iframe', label: t('integration_jupyterhub', 'Embed in Nextcloud (iframe)') },
+        { value: 'redirect', label: t('integration_jupyterhub', 'Full-page redirect') },
+        { value: 'blank', label: t('integration_jupyterhub', 'Open in a new window') },
+      ]
+    },
+  },
+
   methods: {
+    toggleTarget(value, checked) {
+      if (checked) {
+        if (!this.allowedTargets.includes(value)) {
+          this.allowedTargets = [...this.allowedTargets, value]
+        }
+      } else {
+        this.allowedTargets = this.allowedTargets.filter(t => t !== value)
+      }
+    },
     async save() {
       let url = this.jupyterUrl.trim()
       if (url.endsWith('/')) {
         url = url.slice(0, -1)
         this.jupyterUrl = url
       }
+      if (this.webappSharingEnabled && this.allowedTargets.length === 0) {
+        showError(t('integration_jupyterhub', 'Select at least one view target.'))
+        return
+      }
       try {
         await axios.put(generateUrl('/apps/integration_jupyterhub/config'), {
           jupyter_url: url,
+          webapp_allowed_targets: this.allowedTargets,
           webapp_sharing_enabled: this.webappSharingEnabled,
         })
         showSuccess(t('integration_jupyterhub', 'JupyterHub settings saved.'))
@@ -102,6 +143,18 @@ export default {
   margin: 1em 0;
 }
 .webapp-sharing .hint {
+  color: var(--color-text-maxcontrast);
+  margin-top: 0.25em;
+}
+.webapp-targets {
+  margin: 1em 0;
+}
+.webapp-targets .targets-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25em;
+}
+.webapp-targets .hint {
   color: var(--color-text-maxcontrast);
   margin-top: 0.25em;
 }

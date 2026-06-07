@@ -11,7 +11,7 @@
   <description>
     <![CDATA[Integrate JupyterHub into Nextcloud]]>
   </description>
-  <version>0.2.5</version>
+  <version>0.2.6</version>
   <licence>agpl</licence>
   <author mail="kano@sunet.se" homepage="https://github.com/SUNET/nextcloud-jupyter">Micke Nordin</author>
   <namespace>Jupyter</namespace>
@@ -33,6 +33,8 @@
     <command>OCA\Jupyter\Commands\SetUrl</command>
     <command>OCA\Jupyter\Commands\GetWebappSharing</command>
     <command>OCA\Jupyter\Commands\SetWebappSharing</command>
+    <command>OCA\Jupyter\Commands\GetWebappTargets</command>
+    <command>OCA\Jupyter\Commands\SetWebappTargets</command>
   </commands>
   <settings>
     <admin>OCA\Jupyter\Settings\AdminSettings</admin>

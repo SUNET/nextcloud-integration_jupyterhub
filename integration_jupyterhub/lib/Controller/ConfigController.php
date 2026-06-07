@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace OCA\Jupyter\Controller;
 
 use OCA\Jupyter\AppInfo\Application;
+use OCA\Jupyter\Federation\WebappCapabilityDiscovery;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\IConfig;
@@ -21,7 +22,13 @@ class ConfigController extends Controller
     parent::__construct(Application::APP_ID, $request);
   }
 
-  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null): DataResponse
+  /**
+   * @param list<string>|null $webapp_allowed_targets the view targets an
+   *   admin permits this instance to offer. Stored as a comma-separated
+   *   list; every webapp share sends this set intersected with what the
+   *   recipient advertises in OCM discovery.
+   */
+  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null, ?array $webapp_allowed_targets = null): DataResponse
   {
     if ($jupyter_url !== null) {
       $jupyter_url = rtrim($jupyter_url, '/');
@@ -29,6 +36,13 @@ class ConfigController extends Controller
     }
     if ($webapp_sharing_enabled !== null) {
       $this->config->setAppValue(Application::APP_ID, 'webapp_sharing_enabled', $webapp_sharing_enabled ? 'yes' : 'no');
+    }
+    if ($webapp_allowed_targets !== null) {
+      $this->config->setAppValue(
+        Application::APP_ID,
+        'webapp_allowed_targets',
+        implode(',', WebappCapabilityDiscovery::normaliseTargets($webapp_allowed_targets)),
+      );
     }
     return new DataResponse(['status' => 'success']);
   }

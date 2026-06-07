@@ -30,19 +30,23 @@ namespace OCA\Jupyter\Federation;
  */
 class WebappShareIntent
 {
-  /** @var array<string, list<string>> normalized recipient cloud-id => list of targets */
+  /** @var array<string, array{targets: list<string>, permissions: list<string>}> normalized recipient cloud-id => share params */
   private array $pending = [];
 
   /**
-   * @param list<string> $targets
+   * @param list<string> $targets view targets to advertise on the wire
+   * @param list<string> $permissions OCM permission strings (read/write/share)
    */
-  public function announce(string $shareWith, array $targets): void
+  public function announce(string $shareWith, array $targets, array $permissions): void
   {
-    $this->pending[$this->normalize($shareWith)] = $targets;
+    $this->pending[$this->normalize($shareWith)] = [
+      'targets' => $targets,
+      'permissions' => $permissions,
+    ];
   }
 
   /**
-   * @return list<string>|null
+   * @return array{targets: list<string>, permissions: list<string>}|null
    */
   public function pickup(string $shareWith): ?array
   {
@@ -50,9 +54,9 @@ class WebappShareIntent
     if (!isset($this->pending[$key])) {
       return null;
     }
-    $targets = $this->pending[$key];
+    $params = $this->pending[$key];
     unset($this->pending[$key]);
-    return $targets;
+    return $params;
   }
 
   /**

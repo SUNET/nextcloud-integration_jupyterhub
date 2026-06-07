@@ -8,7 +8,6 @@ namespace OCA\Jupyter\Controller;
 
 use OCA\Jupyter\AppInfo\Application;
 use OCA\Jupyter\Federation\WebappCapabilityDiscovery;
-use OCA\Jupyter\Federation\WebappCloudFederationShare;
 use OCA\Jupyter\Federation\WebappShareIntent;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -54,13 +53,17 @@ class WebappShareController extends Controller
   /**
    * @NoAdminRequired
    *
-   * @param string|list<string> $target one or more preferred view
-   *   targets (iframe / redirect / new-window). The wire-level
-   *   `target` field is the intersection of the user's preferences,
-   *   this app's full target set, and what the remote advertises in
-   *   OCM discovery.
+   * @param string|list<string> $permissions the access the sender grants
+   *   the recipient: any of `read` / `write` / `share` (read is always
+   *   implied). These set the local share's permission mask and flow to
+   *   `protocol.webdav/webapp.permissions`; the receiver's ocm-sync runs
+   *   one-way for read and two-way once `write` is present.
+   *
+   *   The view-target set is not a per-share choice — it's the
+   *   admin-configured `webapp_allowed_targets`, intersected with what
+   *   the remote advertises in OCM discovery.
    */
-  public function create(string $path, string $shareWith, array|string $target = WebappCloudFederationShare::TARGET_IFRAME): DataResponse
+  public function create(string $path, string $shareWith, array|string $permissions = ['read']): DataResponse
   {
     $user = $this->userSession->getUser();
     if ($user === null) {
@@ -69,7 +72,8 @@ class WebappShareController extends Controller
     if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
       return new DataResponse(['error' => 'webapp sharing is disabled on this instance'], Http::STATUS_FORBIDDEN);
     }
-    $requestedTargets = $this->normaliseRequestedTargets($target);
+    $requestedTargets = $this->allowedTargets();
+    $ocmPermissions = $this->normalisePermissions($permissions);
 
     try {
       $node = $this->rootFolder->getUserFolder($user->getUID())->get($path);
@@ -101,14 +105,14 @@ class WebappShareController extends Controller
     $share->setShareOwner($user->getUID());
     $share->setShareType(IShare::TYPE_REMOTE);
     $share->setSharedWith($shareWith);
-    $share->setPermissions(Constants::PERMISSION_READ);
+    $share->setPermissions($this->permissionMask($ocmPermissions));
 
     // Announce intent before createShare(): the decorator picks it up
     // by `shareWith` when the outbound OCM share is built. We could
     // also try IShare::setAttributes() but FederatedShareProvider does
     // not persist the attributes JSON, so it'd be gone by the time the
     // decorator's lookup runs.
-    $this->intent->announce($shareWith, $targets);
+    $this->intent->announce($shareWith, $targets, $ocmPermissions);
 
     try {
       $created = $this->shareManager->createShare($share);
@@ -123,6 +127,7 @@ class WebappShareController extends Controller
       'id' => $created->getId(),
       'token' => $created->getToken(),
       'target' => $targets,
+      'permissions' => $ocmPermissions,
       'shareWith' => $shareWith,
     ]);
   }
@@ -163,24 +168,64 @@ class WebappShareController extends Controller
   }
 
   /**
-   * @param string|list<string> $target
+   * The admin-configured view targets this instance offers. Empty or
+   * unset config falls back to every target this app supports, so a
+   * fresh install shares without an explicit admin step.
+   *
    * @return list<string>
    */
-  private function normaliseRequestedTargets(array|string $target): array
+  private function allowedTargets(): array
   {
-    $raw = is_array($target) ? $target : [$target];
-    $out = [];
-    foreach ($raw as $t) {
-      $value = match (strtolower((string)$t)) {
-        WebappCloudFederationShare::TARGET_REDIRECT => WebappCloudFederationShare::TARGET_REDIRECT,
-        WebappCloudFederationShare::TARGET_BLANK, 'new-window', 'newwindow', 'new_window' => WebappCloudFederationShare::TARGET_BLANK,
-        default => WebappCloudFederationShare::TARGET_IFRAME,
+    $raw = $this->config->getAppValue(Application::APP_ID, 'webapp_allowed_targets', '');
+    $configured = WebappCapabilityDiscovery::normaliseTargets(
+      $raw === '' ? [] : explode(',', $raw),
+    );
+    return $configured === [] ? WebappCapabilityDiscovery::ALL_TARGETS : $configured;
+  }
+
+  /**
+   * Canonicalise the sender's requested permissions to the subset
+   * {read, write, share}. `read` is always present (you cannot launch
+   * or sync a notebook you cannot read), and ordered first.
+   *
+   * @param string|list<string> $permissions
+   * @return list<string>
+   */
+  private function normalisePermissions(array|string $permissions): array
+  {
+    $raw = is_array($permissions) ? $permissions : [$permissions];
+    $out = ['read'];
+    foreach ($raw as $p) {
+      $value = match (strtolower((string)$p)) {
+        'write', 'readwrite', 'read-write', 'rw' => 'write',
+        'share', 'reshare' => 'share',
+        default => null,
       };
-      if (!in_array($value, $out, true)) {
+      if ($value !== null && !in_array($value, $out, true)) {
         $out[] = $value;
       }
     }
-    return $out === [] ? [WebappCloudFederationShare::TARGET_IFRAME] : $out;
+    return $out;
+  }
+
+  /**
+   * Translate the OCM permission strings into a Nextcloud permission
+   * mask for the local federated share. `write` grants the full
+   * modify set so the recipient's two-way ocm-sync can push changes
+   * back over webdav.
+   *
+   * @param list<string> $permissions output of {@see normalisePermissions()}
+   */
+  private function permissionMask(array $permissions): int
+  {
+    $mask = Constants::PERMISSION_READ;
+    if (in_array('write', $permissions, true)) {
+      $mask |= Constants::PERMISSION_UPDATE | Constants::PERMISSION_CREATE | Constants::PERMISSION_DELETE;
+    }
+    if (in_array('share', $permissions, true)) {
+      $mask |= Constants::PERMISSION_SHARE;
+    }
+    return $mask;
   }
 
   private function extractHost(string $cloudId): ?string

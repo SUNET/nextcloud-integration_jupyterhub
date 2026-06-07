@@ -92,10 +92,12 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
       return $share;
     }
-    $targets = $this->intent->pickup($share->getShareWith());
-    if ($targets === null || $targets === []) {
+    $intent = $this->intent->pickup($share->getShareWith());
+    if ($intent === null || $intent['targets'] === []) {
       return $share;
     }
+    $targets = $intent['targets'];
+    $permissions = $intent['permissions'] === [] ? ['read'] : $intent['permissions'];
 
     $token = $this->extractWebdavToken($share->getProtocol());
     if ($token === '') {
@@ -124,10 +126,7 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       webappUri: $webappUri,
       sharedSecret: $token,
       target: $targets,
-      // TODO(follow-up): expose permissions in the share dialog and
-      // thread the user's choice through here. Defaulting to read for
-      // now to match the dialog's hard-coded read.
-      permissions: ['read'],
+      permissions: $permissions,
       appName: $share->getResourceName(),
       mimeType: 'application/vnd.jupyter',
       mustExchangeToken: true,

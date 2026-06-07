@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace OCA\Jupyter\Settings;
 
 use OCA\Jupyter\AppInfo\Application;
+use OCA\Jupyter\Federation\WebappCapabilityDiscovery;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IConfig;
@@ -27,8 +28,18 @@ class AdminSettings implements ISettings
   {
     $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
     $webappSharingEnabled = $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes';
+    $allowedTargetsRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_allowed_targets', '');
+    $allowedTargets = WebappCapabilityDiscovery::normaliseTargets(
+      $allowedTargetsRaw === '' ? [] : explode(',', $allowedTargetsRaw),
+    );
+    // Unset config = every supported target allowed (matches the
+    // sender's fallback) so the checkboxes start fully ticked.
+    if ($allowedTargets === []) {
+      $allowedTargets = WebappCapabilityDiscovery::ALL_TARGETS;
+    }
     $this->initialStateService->provideInitialState('jupyter_url', $jupyterUrl);
     $this->initialStateService->provideInitialState('webapp_sharing_enabled', $webappSharingEnabled);
+    $this->initialStateService->provideInitialState('webapp_allowed_targets', $allowedTargets);
     return new TemplateResponse(Application::APP_ID, 'adminSettings');
   }
 

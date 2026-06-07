@@ -25,19 +25,20 @@
       </div>
 
       <div class="field">
-        <label>{{ t('integration_jupyterhub', 'Preferred view target') }}</label>
-        <div class="modes">
-          <label v-for="mode in modes" :key="mode.value" class="mode">
-            <input
-              type="radio"
-              :value="mode.value"
-              v-model="target"
-            >
-            <span>{{ mode.label }}</span>
-          </label>
+        <label>{{ t('integration_jupyterhub', 'Permissions') }}</label>
+        <div class="perms">
+          <NcCheckboxRadioSwitch :checked="true" :disabled="true" type="checkbox">
+            {{ t('integration_jupyterhub', 'Read') }}
+          </NcCheckboxRadioSwitch>
+          <NcCheckboxRadioSwitch v-model:checked="permissions.write" type="checkbox">
+            {{ t('integration_jupyterhub', 'Write — let the recipient save changes back (two-way sync)') }}
+          </NcCheckboxRadioSwitch>
+          <NcCheckboxRadioSwitch v-model:checked="permissions.share" type="checkbox">
+            {{ t('integration_jupyterhub', 'Allow the recipient to re-share') }}
+          </NcCheckboxRadioSwitch>
         </div>
         <p class="hint">
-          {{ t('integration_jupyterhub', 'The actual target is negotiated with the recipient — the wire field is the intersection of what both ends support.') }}
+          {{ t('integration_jupyterhub', 'Read is always granted. The view target is set by the instance administrator and negotiated with the recipient.') }}
         </p>
       </div>
 
@@ -58,7 +59,7 @@
 </template>
 
 <script>
-import { NcButton, NcDialog, NcTextField } from '@nextcloud/vue'
+import { NcButton, NcCheckboxRadioSwitch, NcDialog, NcTextField } from '@nextcloud/vue'
 import { showSuccess, showError } from '@nextcloud/dialogs'
 import { generateUrl } from '@nextcloud/router'
 import axios from '@nextcloud/axios'
@@ -66,7 +67,7 @@ import axios from '@nextcloud/axios'
 export default {
   name: 'WebappShareDialog',
 
-  components: { NcButton, NcDialog, NcTextField },
+  components: { NcButton, NcCheckboxRadioSwitch, NcDialog, NcTextField },
 
   props: {
     path: { type: String, required: true },
@@ -79,20 +80,13 @@ export default {
     return {
       open: true,
       shareWith: '',
-      target: 'iframe',
+      permissions: { write: false, share: false },
       sending: false,
       errorMessage: '',
     }
   },
 
   computed: {
-    modes() {
-      return [
-        { value: 'iframe', label: t('integration_jupyterhub', 'Embed in Nextcloud (iframe)') },
-        { value: 'redirect', label: t('integration_jupyterhub', 'Full-page redirect') },
-        { value: 'blank', label: t('integration_jupyterhub', 'Open in a new window') },
-      ]
-    },
     canSubmit() {
       return !this.sending && /.+@.+/.test(this.shareWith.trim())
     },
@@ -106,25 +100,32 @@ export default {
     async submit() {
       this.sending = true
       this.errorMessage = ''
+      const permissions = ['read']
+      if (this.permissions.write) {
+        permissions.push('write')
+      }
+      if (this.permissions.share) {
+        permissions.push('share')
+      }
       try {
         const response = await axios.post(
           generateUrl('/apps/integration_jupyterhub/api/v1/webapp-share'),
           {
             path: this.path,
             shareWith: this.shareWith.trim(),
-            target: [this.target],
+            permissions,
           },
         )
-        const targets = Array.isArray(response.data?.target)
-          ? response.data.target
-          : [this.target]
+        const grantedPermissions = Array.isArray(response.data?.permissions)
+          ? response.data.permissions
+          : permissions
         showSuccess(t(
           'integration_jupyterhub',
-          'Shared {name} with {peer} ({modes})',
+          'Shared {name} with {peer} ({permissions})',
           {
             name: this.name,
             peer: this.shareWith.trim(),
-            modes: targets.join(', '),
+            permissions: grantedPermissions.join(', '),
           },
         ))
         this.onClose()
@@ -148,16 +149,10 @@ export default {
   font-weight: 600;
   margin-bottom: 4px;
 }
-.webapp-share-dialog .modes {
+.webapp-share-dialog .perms {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-.webapp-share-dialog .modes .mode {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: normal;
 }
 .webapp-share-dialog .error {
   color: var(--color-error);

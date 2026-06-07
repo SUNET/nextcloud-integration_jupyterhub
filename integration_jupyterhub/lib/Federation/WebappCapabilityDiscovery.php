@@ -103,6 +103,32 @@ class WebappCapabilityDiscovery
   }
 
   /**
+   * Canonicalise a list of view-target strings: map known aliases to
+   * their wire value, drop anything unrecognised, dedupe, preserve
+   * order. Shared by the admin-setting save path and the send path so
+   * both agree on what a valid target set looks like.
+   *
+   * @param array<mixed> $targets
+   * @return list<string>
+   */
+  public static function normaliseTargets(array $targets): array
+  {
+    $out = [];
+    foreach ($targets as $t) {
+      $value = match (strtolower((string)$t)) {
+        WebappCloudFederationShare::TARGET_IFRAME => WebappCloudFederationShare::TARGET_IFRAME,
+        WebappCloudFederationShare::TARGET_REDIRECT => WebappCloudFederationShare::TARGET_REDIRECT,
+        WebappCloudFederationShare::TARGET_BLANK, 'new-window', 'newwindow', 'new_window' => WebappCloudFederationShare::TARGET_BLANK,
+        default => null,
+      };
+      if ($value !== null && !in_array($value, $out, true)) {
+        $out[] = $value;
+      }
+    }
+    return $out;
+  }
+
+  /**
    * @param array<mixed> $targets
    * @return list<string>
    */
