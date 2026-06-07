@@ -220,6 +220,13 @@ class ShareStore:
                 created_at=row["created_at"],
             )
 
+    def delete(self, sender_domain: str, client_id: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "DELETE FROM shares WHERE sender_domain=? AND client_id=?",
+                (sender_domain, client_id),
+            )
+
 
 store = ShareStore(os.environ.get("OCM_STORE_PATH", "/srv/jupyterhub/ocm-shares.db"))
 
@@ -570,6 +577,22 @@ def hub_start_named_server(user: str, server: str, user_options: dict) -> None:
         )
 
 
+def hub_delete_server(user: str, server: str) -> None:
+    """Stop and remove a named server. Idempotent: a missing user/server or an
+    already-stopped server is treated as success."""
+    r = _hub_request(
+        "DELETE",
+        f'/users/{quote(user, safe="")}/servers/{quote(server, safe="")}',
+        json={"remove": True},
+    )
+    # 202 = stopping then removed, 204 = removed, 400 = not running,
+    # 404 = no such user/server — all fine for an idempotent reap.
+    if r.status_code not in (202, 204, 400, 404):
+        raise HTTPError(
+            502, f"failed to delete named-server: {r.status_code} {r.text[:200]}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
@@ -589,6 +612,19 @@ def _extract_client_id(protocol: dict) -> str:
     if not isinstance(webapp, dict) or "clientId" not in webapp:
         raise HTTPError(400, "protocol.webapp.clientId missing")
     return str(webapp["clientId"])
+
+
+def _assert_share_token_identity(
+    claims: dict, iss_domain: str, rec: ShareRecord
+) -> None:
+    """The presented access_token must belong to this share: its sub@iss must
+    match the stored owner and its aud must match the stored shareWith. Shared
+    by /open (launch) and /close (reap) so both authorise the same way."""
+    owner_from_jwt = f'{claims["sub"]}@{iss_domain}'
+    if _norm_ocm(owner_from_jwt) != _norm_ocm(rec.owner):
+        raise HTTPError(403, "JWT sub/iss does not match stored owner")
+    if _norm_ocm(claims["aud"]) != _norm_ocm(rec.share_with):
+        raise HTTPError(403, "JWT aud does not match stored shareWith")
 
 
 class SharesHandler(RequestHandler):
@@ -677,14 +713,7 @@ class OpenHandler(RequestHandler):
         if rec is None:
             raise HTTPError(404, "no share record for this token")
 
-        # JWT sub is the sharer's identifier on the sending server; the OCM
-        # address of the owner is therefore sub@<iss-host>. Compare that
-        # against the stored owner.
-        owner_from_jwt = f'{claims["sub"]}@{iss_domain}'
-        if _norm_ocm(owner_from_jwt) != _norm_ocm(rec.owner):
-            raise HTTPError(403, "JWT sub/iss does not match stored owner")
-        if _norm_ocm(claims["aud"]) != _norm_ocm(rec.share_with):
-            raise HTTPError(403, "JWT aud does not match stored shareWith")
+        _assert_share_token_identity(claims, iss_domain, rec)
 
         share_with = _norm_ocm(rec.share_with)
         log(f"opening share ({iss_domain}, {client_id}) for {share_with}")
@@ -748,6 +777,52 @@ class OpenHandler(RequestHandler):
         )
 
 
+class CloseHandler(RequestHandler):
+    """Reap a share's notebook server when the receiver leaves/declines it.
+
+    Same access_token auth as /open: only a holder of a valid access_token for
+    the share (the legitimate receiver) may close it. Idempotent — a share that
+    is already gone returns success so the receiver can fire-and-forget.
+    """
+
+    def check_xsrf_cookie(self):
+        return
+
+    def post(self):
+        ct = self.request.headers.get("Content-Type", "")
+        if not ct.startswith("application/x-www-form-urlencoded"):
+            raise HTTPError(415, f"unsupported Content-Type: {ct}")
+
+        token = self.get_body_argument("access_token", default=None)
+        if not token:
+            raise HTTPError(400, "access_token missing")
+
+        claims = verify_access_token(token)
+        iss_domain = urlparse(claims["iss"]).netloc
+        client_id = claims["client_id"]
+
+        rec = store.get(iss_domain, client_id)
+        if rec is None:
+            # Already reaped / never stored — nothing to do.
+            self.set_status(200)
+            self.set_header("content-type", "application/json")
+            self.write(json.dumps({"status": "gone"}))
+            return
+
+        _assert_share_token_identity(claims, iss_domain, rec)
+
+        share_with = _norm_ocm(rec.share_with)
+        username = f"ocm:{share_with}"
+        server_name = f"share-{client_id[:12]}"
+        hub_delete_server(username, server_name)
+        store.delete(iss_domain, client_id)
+        log(f"closed share ({iss_domain}, {client_id}) for {share_with}")
+
+        self.set_status(200)
+        self.set_header("content-type", "application/json")
+        self.write(json.dumps({"status": "closed"}))
+
+
 class PingHandler(RequestHandler):
     def get(self):
         self.set_header("content-type", "application/json")
@@ -759,6 +834,7 @@ def main():
     app = Application(
         [
             (urllib.parse.urljoin(prefix, "open"), OpenHandler),
+            (urllib.parse.urljoin(prefix, "close"), CloseHandler),
             (urllib.parse.urljoin(prefix, "shares"), SharesHandler),
             (prefix + "/?", PingHandler),
         ]
