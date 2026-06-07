@@ -28,7 +28,7 @@ class ConfigController extends Controller
    *   list; every webapp share sends this set intersected with what the
    *   recipient advertises in OCM discovery.
    */
-  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null, ?array $webapp_allowed_targets = null): DataResponse
+  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null, ?array $webapp_allowed_targets = null, ?int $ocm_access_token_ttl = null): DataResponse
   {
     if ($jupyter_url !== null) {
       $jupyter_url = rtrim($jupyter_url, '/');
@@ -43,6 +43,11 @@ class ConfigController extends Controller
         'webapp_allowed_targets',
         implode(',', WebappCapabilityDiscovery::normaliseTargets($webapp_allowed_targets)),
       );
+    }
+    if ($ocm_access_token_ttl !== null) {
+      // Seconds. Clamp to 5 min .. 24 h to match the sender NC core's range.
+      $ttl = max(300, min(86400, $ocm_access_token_ttl));
+      $this->config->setAppValue(Application::APP_ID, 'ocm_access_token_ttl', (string)$ttl);
     }
     return new DataResponse(['status' => 'success']);
   }

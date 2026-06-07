@@ -107,6 +107,16 @@ class WebappShareController extends Controller
     $share->setSharedWith($shareWith);
     $share->setPermissions($this->permissionMask($ocmPermissions));
 
+    // Convey the desired OCM access_token lifetime to the federated-share
+    // token. Unlike the decorator (which runs post-persistence — hence the
+    // intent registry below — and can't see attributes), FederatedShareProvider
+    // reads this attribute DURING createShare() while building the refresh
+    // token, so it survives and gets stashed on the token scope for
+    // TokenController to mint with.
+    $attributes = $share->newAttributes();
+    $attributes->setAttribute('ocm', 'access-token-ttl', (string)$this->accessTokenTtl());
+    $share->setAttributes($attributes);
+
     // Announce intent before createShare(): the decorator picks it up
     // by `shareWith` when the outbound OCM share is built. We could
     // also try IShare::setAttributes() but FederatedShareProvider does
@@ -216,6 +226,17 @@ class WebappShareController extends Controller
    *
    * @param list<string> $permissions output of {@see normalisePermissions()}
    */
+  /**
+   * The admin-configured OCM access_token lifetime (seconds) for shares
+   * created by this app. Default 1 hour; clamped to 5 min .. 24 h to
+   * match the sender NC core's accepted range.
+   */
+  private function accessTokenTtl(): int
+  {
+    $ttl = (int)$this->config->getAppValue(Application::APP_ID, 'ocm_access_token_ttl', '3600');
+    return max(300, min(86400, $ttl));
+  }
+
   private function permissionMask(array $permissions): int
   {
     $mask = Constants::PERMISSION_READ;

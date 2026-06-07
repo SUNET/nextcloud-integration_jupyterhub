@@ -37,9 +37,11 @@ class AdminSettings implements ISettings
     if ($allowedTargets === []) {
       $allowedTargets = WebappCapabilityDiscovery::ALL_TARGETS;
     }
+    $accessTokenTtl = (int)$this->config->getAppValue(Application::APP_ID, 'ocm_access_token_ttl', '3600');
     $this->initialStateService->provideInitialState('jupyter_url', $jupyterUrl);
     $this->initialStateService->provideInitialState('webapp_sharing_enabled', $webappSharingEnabled);
     $this->initialStateService->provideInitialState('webapp_allowed_targets', $allowedTargets);
+    $this->initialStateService->provideInitialState('ocm_access_token_ttl', $accessTokenTtl);
     return new TemplateResponse(Application::APP_ID, 'adminSettings');
   }
 

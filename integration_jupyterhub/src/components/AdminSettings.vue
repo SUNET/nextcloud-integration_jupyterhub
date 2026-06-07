@@ -52,6 +52,20 @@
           </p>
         </div>
 
+        <div v-if="webappSharingEnabled" class="access-token-ttl">
+          <label for="ocm_access_token_ttl">{{ t('integration_jupyterhub', 'OCM access-token lifetime (seconds)') }}</label>
+          <NcTextField
+            id="ocm_access_token_ttl"
+            v-model="accessTokenTtl"
+            type="number"
+            :label-outside="true"
+            :placeholder="'3600'"
+          />
+          <p class="hint">
+            {{ t('integration_jupyterhub', 'How long a launched notebook session stays authorised before the share must be re-opened. Applied per share when it is created. Default 3600 (1 hour); allowed 300–86400.') }}
+          </p>
+        </div>
+
         <NcButton
           :wide="true"
           @click="save"
@@ -90,6 +104,7 @@ export default {
       jupyterUrl: loadState('integration_jupyterhub', 'jupyter_url', ''),
       webappSharingEnabled: loadState('integration_jupyterhub', 'webapp_sharing_enabled', false),
       allowedTargets: loadState('integration_jupyterhub', 'webapp_allowed_targets', ['iframe', 'redirect', 'blank']),
+      accessTokenTtl: loadState('integration_jupyterhub', 'ocm_access_token_ttl', 3600),
     }
   },
 
@@ -119,6 +134,7 @@ export default {
           jupyter_url: url,
           webapp_allowed_targets: this.allowedTargets,
           webapp_sharing_enabled: this.webappSharingEnabled,
+          ocm_access_token_ttl: Number(this.accessTokenTtl) || 3600,
         })
         showSuccess(t('integration_jupyterhub', 'JupyterHub settings saved.'))
       } catch (e) {
