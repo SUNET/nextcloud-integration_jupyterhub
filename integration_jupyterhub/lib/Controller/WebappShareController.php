@@ -107,16 +107,6 @@ class WebappShareController extends Controller
     $share->setSharedWith($shareWith);
     $share->setPermissions($this->permissionMask($ocmPermissions));
 
-    // Convey the desired OCM access_token lifetime to the federated-share
-    // token. Unlike the decorator (which runs post-persistence — hence the
-    // intent registry below — and can't see attributes), FederatedShareProvider
-    // reads this attribute DURING createShare() while building the refresh
-    // token, so it survives and gets stashed on the token scope for
-    // TokenController to mint with.
-    $attributes = $share->newAttributes();
-    $attributes->setAttribute('ocm', 'access-token-ttl', (string)$this->accessTokenTtl());
-    $share->setAttributes($attributes);
-
     // Announce intent before createShare(): the decorator picks it up
     // by `shareWith` when the outbound OCM share is built. We could
     // also try IShare::setAttributes() but FederatedShareProvider does
@@ -132,6 +122,13 @@ class WebappShareController extends Controller
       $this->logger->warning('Failed to create webapp share', ['exception' => $e]);
       return new DataResponse(['error' => $e->getMessage()], Http::STATUS_BAD_GATEWAY);
     }
+
+    // Stash the configured access_token lifetime on the just-minted refresh
+    // token, before it's ever exchanged. The sender's OCM token endpoint
+    // honours `ocm_access_token_ttl` from the token scope; absent it, the
+    // endpoint's 3600 default applies. Best-effort — minting still works
+    // without it.
+    $this->applyAccessTokenTtl($created->getToken());
 
     return new DataResponse([
       'id' => $created->getId(),
@@ -235,6 +232,33 @@ class WebappShareController extends Controller
   {
     $ttl = (int)$this->config->getAppValue(Application::APP_ID, 'ocm_access_token_ttl', '3600');
     return max(300, min(86400, $ttl));
+  }
+
+  /**
+   * Record the configured OCM access_token lifetime on the share's refresh
+   * token (a permanent oc_authtoken) by stashing it on the token scope.
+   * The sender's OCM token endpoint reads `ocm_access_token_ttl` there when
+   * minting. This is the generic "minter sets the TTL after creation"
+   * mechanism — it does not touch federated file sharing. Best-effort: any
+   * failure leaves the token without an override, so the endpoint's 3600
+   * default applies.
+   */
+  private function applyAccessTokenTtl(string $refreshToken): void
+  {
+    if ($refreshToken === '') {
+      return;
+    }
+    try {
+      /** @var \OC\Authentication\Token\IProvider $tokenProvider */
+      $tokenProvider = \OCP\Server::get(\OC\Authentication\Token\IProvider::class);
+      $token = $tokenProvider->getToken($refreshToken);
+      $scope = $token->getScopeAsArray();
+      $scope['ocm_access_token_ttl'] = $this->accessTokenTtl();
+      $token->setScope($scope);
+      $tokenProvider->updateToken($token);
+    } catch (\Throwable $e) {
+      $this->logger->warning('Could not set OCM access_token TTL on share token: {msg}', ['msg' => $e->getMessage()]);
+    }
   }
 
   private function permissionMask(array $permissions): int
