@@ -1,14 +1,17 @@
 import json
 import os
+import re
 import time
 from datetime import datetime
 from urllib.parse import urlencode, urlparse
 
 import jwt
 from jupyterhub.handlers.base import BaseHandler
+from jupyterhub.utils import url_path_join
 from jwt import PyJWKClient
 from oauthenticator.generic import GenericOAuthenticator
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest
+from tornado.httputil import url_concat
 
 token_url = (
     "https://" + os.environ["NEXTCLOUD_HOST"] + "/index.php/apps/oauth2/api/v1/token"
@@ -57,6 +60,14 @@ def _verify_ocm_jwt(token):
     )
 
 
+def _receiver_root_from_aud(aud):
+    # aud is the shareWith cloud id (e.g. "bob@bob.example" or
+    # "bob@https://bob.example"); the receiver root is its host.
+    host = aud.rsplit("@", 1)[-1] if "@" in aud else aud
+    host = re.sub(r"^https?://", "", host).strip().rstrip("/")
+    return f"https://{host}/" if host else None
+
+
 def _is_ocm_user(user):
     # OCM accounts are tagged by membership in the 'ocm' group (set by the
     # OCM service at user creation, before any spawn). This is the robust
@@ -94,7 +105,29 @@ class OCMLoginHandler(BaseHandler):
             {"name": username, "auth_state": {"ocm_access_token": access_token}}
         )
         self.set_login_cookie(user)
+        # Remember the receiver root (from shareWith/aud) in a signed cookie so
+        # the gateway can bounce the user back there once the token lapses.
+        receiver_root = _receiver_root_from_aud(claims["aud"])
+        if receiver_root:
+            self.set_secure_cookie("ocm_receiver_root", receiver_root)
         self.redirect(next_url)
+
+
+class OCMGatewayHandler(BaseHandler):
+    # login_url points here. A lapsed OCM user (signed receiver cookie) is sent
+    # back to their receiver to re-mint; everyone else goes to OAuth login.
+    def get(self):
+        root = self.get_secure_cookie("ocm_receiver_root")
+        if root:
+            self.redirect(root.decode())
+            return
+        next_url = self.get_argument("next", "")
+        self.redirect(
+            url_concat(
+                url_path_join(self.hub.base_url, "oauth_login"),
+                {"next": next_url} if next_url else {},
+            )
+        )
 
 
 async def get_nextcloud_access_token(refresh_token):
@@ -140,7 +173,15 @@ class NextcloudOAuthenticator(GenericOAuthenticator):
         self.user_dict = {}
 
     def get_handlers(self, app):
-        return super().get_handlers(app) + [(r"/ocm-login", OCMLoginHandler)]
+        return super().get_handlers(app) + [
+            (r"/ocm-login", OCMLoginHandler),
+            (r"/ocm-gateway", OCMGatewayHandler),
+        ]
+
+    def login_url(self, base_url):
+        # Route unauthenticated users through the gateway so lapsed OCM users
+        # are sent back to their receiver instead of alice's OAuth.
+        return url_path_join(base_url, "ocm-gateway")
 
     async def pre_spawn_start(self, user, spawner):
         super().pre_spawn_start(user, spawner)
