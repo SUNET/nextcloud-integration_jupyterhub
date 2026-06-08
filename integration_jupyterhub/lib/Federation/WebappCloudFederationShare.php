@@ -89,7 +89,7 @@ class WebappCloudFederationShare extends CloudFederationShare
     array|string $target,
     array $permissions = ['read'],
     ?string $appName = null,
-    ?string $mimeType = 'application/vnd.jupyter',
+    ?string $appIcon = null,
     bool $mustExchangeToken = true,
   ): void {
     $webdav = [
@@ -108,10 +108,11 @@ class WebappCloudFederationShare extends CloudFederationShare
       'permissions' => $permissions,
     ];
     if ($appName !== null) {
-      $webapp['name'] = $appName;
+      $webapp['appName'] = $appName;
     }
-    if ($mimeType !== null) {
-      $webapp['mimeType'] = $mimeType;
+    if ($appIcon !== null) {
+      // https or data URL the receiver renders next to the share.
+      $webapp['appIcon'] = $appIcon;
     }
 
     $this->setProtocol([
