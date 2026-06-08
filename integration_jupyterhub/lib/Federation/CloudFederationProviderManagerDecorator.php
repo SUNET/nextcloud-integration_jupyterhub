@@ -128,7 +128,7 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       target: $targets,
       permissions: $permissions,
       appName: 'Jupyter',
-      appIcon: $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath(Application::APP_ID, 'logo_dark.svg')),
+      mediaType: 'application/vnd.jupyter',
       mustExchangeToken: true,
     );
 

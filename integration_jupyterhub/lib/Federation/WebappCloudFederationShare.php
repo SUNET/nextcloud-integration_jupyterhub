@@ -89,7 +89,7 @@ class WebappCloudFederationShare extends CloudFederationShare
     array|string $target,
     array $permissions = ['read'],
     ?string $appName = null,
-    ?string $appIcon = null,
+    ?string $mediaType = null,
     bool $mustExchangeToken = true,
   ): void {
     $webdav = [
@@ -110,9 +110,10 @@ class WebappCloudFederationShare extends CloudFederationShare
     if ($appName !== null) {
       $webapp['appName'] = $appName;
     }
-    if ($appIcon !== null) {
-      // https or data URL the receiver renders next to the share.
-      $webapp['appIcon'] = $appIcon;
+    if ($mediaType !== null) {
+      // Media (MIME) type of the share; the receiver picks a themed icon
+      // from it (OCM-API#368). e.g. application/vnd.jupyter.
+      $webapp['mediaType'] = $mediaType;
     }
 
     $this->setProtocol([
