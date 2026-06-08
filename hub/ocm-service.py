@@ -618,8 +618,8 @@ def _assert_share_token_identity(
     claims: dict, iss_domain: str, rec: ShareRecord
 ) -> None:
     """The presented access_token must belong to this share: its sub@iss must
-    match the stored owner and its aud must match the stored shareWith. Shared
-    by /open (launch) and /close (reap) so both authorise the same way."""
+    match the stored owner and its aud must match the stored shareWith. Used by
+    /open (launch); /close authorises via the sender's signed back channel."""
     owner_from_jwt = f'{claims["sub"]}@{iss_domain}'
     if _norm_ocm(owner_from_jwt) != _norm_ocm(rec.owner):
         raise HTTPError(403, "JWT sub/iss does not match stored owner")
@@ -778,30 +778,35 @@ class OpenHandler(RequestHandler):
 
 
 class CloseHandler(RequestHandler):
-    """Reap a share's notebook server when the receiver leaves/declines it.
-
-    Same access_token auth as /open: only a holder of a valid access_token for
-    the share (the legitimate receiver) may close it. Idempotent — a share that
-    is already gone returns success so the receiver can fire-and-forget.
-    """
+    """Reap a share's notebook server. Sender-driven: the paired NC signs a
+    back-channel POST (sender + clientId), same auth as /shares. Idempotent —
+    an already-gone share returns success so the sender can fire-and-forget."""
 
     def check_xsrf_cookie(self):
         return
 
     def post(self):
-        ct = self.request.headers.get("Content-Type", "")
-        if not ct.startswith("application/x-www-form-urlencoded"):
-            raise HTTPError(415, f"unsupported Content-Type: {ct}")
+        body = self.request.body or b""
+        try:
+            payload = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            raise HTTPError(400, "invalid JSON body")
 
-        token = self.get_body_argument("access_token", default=None)
-        if not token:
-            raise HTTPError(400, "access_token missing")
+        sender = payload.get("sender")
+        if not isinstance(sender, str) or "@" not in sender:
+            raise HTTPError(400, "missing or malformed sender")
+        sender_domain = _domain_of_ocm_address(sender)
 
-        claims = verify_access_token(token)
-        iss_domain = urlparse(claims["iss"]).netloc
-        client_id = claims["client_id"]
+        if sender_domain not in TRUSTED_BACK_CHANNEL_DOMAINS:
+            raise HTTPError(403, "sender domain not in trusted back-channel allowlist")
 
-        rec = store.get(iss_domain, client_id)
+        verify_ocm_signature(self, body, sender_domain)
+
+        client_id = str(payload.get("clientId", ""))
+        if not client_id:
+            raise HTTPError(400, "clientId missing")
+
+        rec = store.get(sender_domain, client_id)
         if rec is None:
             # Already reaped / never stored — nothing to do.
             self.set_status(200)
@@ -809,14 +814,12 @@ class CloseHandler(RequestHandler):
             self.write(json.dumps({"status": "gone"}))
             return
 
-        _assert_share_token_identity(claims, iss_domain, rec)
-
         share_with = _norm_ocm(rec.share_with)
         username = f"ocm:{share_with}"
         server_name = f"share-{client_id[:12]}"
         hub_delete_server(username, server_name)
-        store.delete(iss_domain, client_id)
-        log(f"closed share ({iss_domain}, {client_id}) for {share_with}")
+        store.delete(sender_domain, client_id)
+        log(f"closed share ({sender_domain}, {client_id}) for {share_with}")
 
         self.set_status(200)
         self.set_header("content-type", "application/json")
