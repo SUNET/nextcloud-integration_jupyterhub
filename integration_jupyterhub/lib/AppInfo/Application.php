@@ -13,6 +13,7 @@ use OCA\Jupyter\Federation\WebappShareIntent;
 use OCA\Jupyter\Listener\CSPListener;
 use OCA\Jupyter\Listener\HasNotebookMetadataListener;
 use OCA\Jupyter\Listener\LoadFilesScriptListener;
+use OCA\Jupyter\Listener\ShareDeletedListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -26,6 +27,7 @@ use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\FilesMetadata\Event\MetadataLiveEvent;
 use OCP\IURLGenerator;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
+use OCP\Share\Events\ShareDeletedEvent;
 use Psr\Log\LoggerInterface;
 
 class Application extends App implements IBootstrap
@@ -61,6 +63,8 @@ class Application extends App implements IBootstrap
     $context->registerEventListener(NodeRenamedEvent::class, HasNotebookMetadataListener::class);
     $context->registerEventListener(NodeDeletedEvent::class, HasNotebookMetadataListener::class);
 
+    // Sender revoke: reap the hub server when an outgoing federated share goes.
+    $context->registerEventListener(ShareDeletedEvent::class, ShareDeletedListener::class);
   }
 
   public function boot(IBootContext $context): void

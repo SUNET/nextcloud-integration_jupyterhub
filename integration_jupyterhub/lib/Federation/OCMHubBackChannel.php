@@ -10,9 +10,11 @@ use OC\Authentication\Token\IProvider;
 use OC\OCM\OCMSignatoryManager;
 use OC\OCM\Rfc9421SignatoryManager;
 use OCA\Jupyter\AppInfo\Application;
+use OCP\Federation\ICloudIdManager;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\Security\Signature\ISignatureManager;
+use OCP\Share\IShare;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -29,6 +31,7 @@ class OCMHubBackChannel
     private ISignatureManager $signatureManager,
     private OCMSignatoryManager $signatoryManager,
     private IProvider $tokenProvider,
+    private ICloudIdManager $cloudIdManager,
     private IConfig $config,
     private LoggerInterface $logger,
   ) {
@@ -113,5 +116,51 @@ class OCMHubBackChannel
       'providerId' => $share->getProviderId(),
       'clientId' => $clientId,
     ]);
+  }
+
+  /**
+   * Tell the hub to reap the notebook server it spawned for this share.
+   * Best-effort: unlike push() a failure must never block the unshare, so
+   * everything here only logs. The hub matches the share by (sender, clientId)
+   * and is idempotent, so a non-webapp share simply gets "gone".
+   */
+  public function close(IShare $share): void
+  {
+    $hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
+    if ($hubBase === '') {
+      return;
+    }
+
+    try {
+      // clientId = id of the PublicKeyToken whose value is the share secret,
+      // the same key push() registered the share under.
+      $clientId = (string)$this->tokenProvider->getToken($share->getToken())->getId();
+    } catch (\Throwable $e) {
+      // No resolvable token => nothing we registered with the hub.
+      return;
+    }
+
+    $sender = $this->cloudIdManager->getCloudId($share->getShareOwner(), null)->getId();
+    $body = (string)json_encode(['sender' => $sender, 'clientId' => $clientId], JSON_UNESCAPED_SLASHES);
+    $url = $hubBase . '/services/ocm/close';
+
+    try {
+      $signed = $this->signatureManager->signOutgoingRequestIClientPayload(
+        new Rfc9421SignatoryManager($this->signatoryManager),
+        ['body' => $body, 'headers' => ['Content-Type' => 'application/json']],
+        'POST',
+        $url,
+      );
+      $this->clientService->newClient()->post($url, [
+        'headers' => $signed['headers'],
+        'body' => $signed['body'],
+        'timeout' => 10,
+      ]);
+    } catch (\Throwable $e) {
+      $this->logger->info('OCM hub reap failed for clientId {cid}: {msg}', [
+        'cid' => $clientId,
+        'msg' => $e->getMessage(),
+      ]);
+    }
   }
 }

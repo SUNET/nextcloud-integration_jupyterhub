@@ -194,7 +194,13 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
   #[\Override]
   public function getCloudFederationProvider($resourceType): ICloudFederationProvider
   {
-    return $this->inner->getCloudFederationProvider($resourceType);
+    $provider = $this->inner->getCloudFederationProvider($resourceType);
+    // Wrap the file provider so a recipient's decline reaps the hub server.
+    if ($resourceType === 'file'
+      && $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes') {
+      return new FileShareDeclineReaper($provider, $this->hubBackChannel, $this->logger);
+    }
+    return $provider;
   }
 
   #[\Override]
