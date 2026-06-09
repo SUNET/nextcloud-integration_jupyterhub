@@ -52,6 +52,19 @@
           </p>
         </div>
 
+        <div v-if="webappSharingEnabled" class="webapp-media-types">
+          <label for="webapp_media_types">{{ t('integration_jupyterhub', 'Advertised media types') }}</label>
+          <NcTextField
+            id="webapp_media_types"
+            v-model="mediaTypesText"
+            :label-outside="true"
+            :placeholder="'application/x-ipynb+json, text/plain, text/markdown, text/x-python'"
+          />
+          <p class="hint">
+            {{ t('integration_jupyterhub', 'Comma-separated MIME types this JupyterHub can handle. Sent to recipients in every webapp share as a hint about what file types the share opens.') }}
+          </p>
+        </div>
+
         <div v-if="webappSharingEnabled" class="access-token-ttl">
           <label for="ocm_access_token_ttl">{{ t('integration_jupyterhub', 'OCM access-token lifetime (seconds)') }}</label>
           <NcTextField
@@ -103,7 +116,13 @@ export default {
     return {
       jupyterUrl: loadState('integration_jupyterhub', 'jupyter_url', ''),
       webappSharingEnabled: loadState('integration_jupyterhub', 'webapp_sharing_enabled', false),
-      allowedTargets: loadState('integration_jupyterhub', 'webapp_allowed_targets', ['iframe', 'redirect', 'blank']),
+      allowedTargets: loadState('integration_jupyterhub', 'webapp_allowed_targets', ['iframe', 'blank']),
+      mediaTypesText: loadState('integration_jupyterhub', 'webapp_media_types', [
+        'application/x-ipynb+json',
+        'text/plain',
+        'text/markdown',
+        'text/x-python',
+      ]).join(', '),
       accessTokenTtl: loadState('integration_jupyterhub', 'ocm_access_token_ttl', 3600),
     }
   },
@@ -112,8 +131,7 @@ export default {
     allTargets() {
       return [
         { value: 'iframe', label: t('integration_jupyterhub', 'Embed in Nextcloud (iframe)') },
-        { value: 'redirect', label: t('integration_jupyterhub', 'Full-page redirect') },
-        { value: 'blank', label: t('integration_jupyterhub', 'Open in a new window') },
+        { value: 'blank', label: t('integration_jupyterhub', 'Open in a new window or redirect') },
       ]
     },
   },
@@ -129,10 +147,15 @@ export default {
         showError(t('integration_jupyterhub', 'Select at least one view target.'))
         return
       }
+      const mediaTypes = this.mediaTypesText
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s !== '')
       try {
         await axios.put(generateUrl('/apps/integration_jupyterhub/config'), {
           jupyter_url: url,
           webapp_allowed_targets: this.allowedTargets,
+          webapp_media_types: mediaTypes,
           webapp_sharing_enabled: this.webappSharingEnabled,
           ocm_access_token_ttl: Number(this.accessTokenTtl) || 3600,
         })
@@ -163,6 +186,18 @@ export default {
   margin-bottom: 0.25em;
 }
 .webapp-targets .hint {
+  color: var(--color-text-maxcontrast);
+  margin-top: 0.25em;
+}
+.webapp-media-types {
+  margin: 1em 0;
+}
+.webapp-media-types label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25em;
+}
+.webapp-media-types .hint {
   color: var(--color-text-maxcontrast);
   margin-top: 0.25em;
 }

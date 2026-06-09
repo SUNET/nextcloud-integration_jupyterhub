@@ -25,7 +25,7 @@ use Psr\Log\LoggerInterface;
  *       "name": "folder",
  *       "shareTypes": ["user"],
  *       "protocols": {
- *         "webapp-receive": { "targets": ["blank", "redirect", "iframe"] }
+ *         "webapp-receive": { "targets": ["blank", "iframe"] }
  *       }
  *     }]
  *
@@ -37,8 +37,15 @@ class WebappCapabilityDiscovery
   /** @var list<string> All targets this app can produce as a sender or render as a receiver. */
   public const ALL_TARGETS = [
     WebappCloudFederationShare::TARGET_IFRAME,
-    WebappCloudFederationShare::TARGET_REDIRECT,
     WebappCloudFederationShare::TARGET_BLANK,
+  ];
+
+  /** @var list<string> Default `mediaTypes` covering .ipynb/.txt/.md/.py. */
+  public const DEFAULT_MEDIA_TYPES = [
+    'application/x-ipynb+json',
+    'text/plain',
+    'text/markdown',
+    'text/x-python',
   ];
 
   public function __construct(
@@ -103,10 +110,8 @@ class WebappCapabilityDiscovery
   }
 
   /**
-   * Canonicalise a list of view-target strings: map known aliases to
-   * their wire value, drop anything unrecognised, dedupe, preserve
-   * order. Shared by the admin-setting save path and the send path so
-   * both agree on what a valid target set looks like.
+   * Drop entries not in the wire vocabulary, dedupe, preserve order.
+   * Shared by the admin-save path and the send path.
    *
    * @param array<mixed> $targets
    * @return list<string>
@@ -115,15 +120,33 @@ class WebappCapabilityDiscovery
   {
     $out = [];
     foreach ($targets as $t) {
-      $value = match (strtolower((string)$t)) {
-        WebappCloudFederationShare::TARGET_IFRAME => WebappCloudFederationShare::TARGET_IFRAME,
-        WebappCloudFederationShare::TARGET_REDIRECT => WebappCloudFederationShare::TARGET_REDIRECT,
-        WebappCloudFederationShare::TARGET_BLANK, 'new-window', 'newwindow', 'new_window' => WebappCloudFederationShare::TARGET_BLANK,
-        default => null,
-      };
-      if ($value !== null && !in_array($value, $out, true)) {
-        $out[] = $value;
+      if (!is_string($t) || !in_array($t, self::ALL_TARGETS, true) || in_array($t, $out, true)) {
+        continue;
       }
+      $out[] = $t;
+    }
+    return $out;
+  }
+
+  /**
+   * Trim, require `type/subtype`, dedupe, preserve order. We don't
+   * enforce IANA — admins can advertise vendor types.
+   *
+   * @param array<mixed> $mediaTypes
+   * @return list<string>
+   */
+  public static function normaliseMediaTypes(array $mediaTypes): array
+  {
+    $out = [];
+    foreach ($mediaTypes as $t) {
+      if (!is_string($t)) {
+        continue;
+      }
+      $value = trim($t);
+      if ($value === '' || !str_contains($value, '/') || in_array($value, $out, true)) {
+        continue;
+      }
+      $out[] = $value;
     }
     return $out;
   }

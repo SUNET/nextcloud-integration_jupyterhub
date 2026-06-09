@@ -27,8 +27,9 @@ class ConfigController extends Controller
    *   admin permits this instance to offer. Stored as a comma-separated
    *   list; every webapp share sends this set intersected with what the
    *   recipient advertises in OCM discovery.
+   * @param list<string>|null $webapp_media_types MIME types this webapp can handle. Stored CSV.
    */
-  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null, ?array $webapp_allowed_targets = null, ?int $ocm_access_token_ttl = null): DataResponse
+  public function update(?string $jupyter_url = null, ?bool $webapp_sharing_enabled = null, ?array $webapp_allowed_targets = null, ?array $webapp_media_types = null, ?int $ocm_access_token_ttl = null): DataResponse
   {
     if ($jupyter_url !== null) {
       $jupyter_url = rtrim($jupyter_url, '/');
@@ -42,6 +43,13 @@ class ConfigController extends Controller
         Application::APP_ID,
         'webapp_allowed_targets',
         implode(',', WebappCapabilityDiscovery::normaliseTargets($webapp_allowed_targets)),
+      );
+    }
+    if ($webapp_media_types !== null) {
+      $this->config->setAppValue(
+        Application::APP_ID,
+        'webapp_media_types',
+        implode(',', WebappCapabilityDiscovery::normaliseMediaTypes($webapp_media_types)),
       );
     }
     if ($ocm_access_token_ttl !== null) {

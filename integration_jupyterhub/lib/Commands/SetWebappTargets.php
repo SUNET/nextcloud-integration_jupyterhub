@@ -29,7 +29,7 @@ class SetWebappTargets extends Command
       ->addArgument(
         'targets',
         InputArgument::IS_ARRAY | InputArgument::REQUIRED,
-        'One or more of: iframe redirect blank',
+        'One or more of: iframe blank',
       );
   }
 
@@ -39,7 +39,7 @@ class SetWebappTargets extends Command
     $args = (array)$input->getArgument('targets');
     $targets = WebappCapabilityDiscovery::normaliseTargets($args);
     if ($targets === []) {
-      $output->writeln('<error>No valid targets given. Use one or more of: iframe redirect blank.</error>');
+      $output->writeln('<error>No valid targets given. Use one or more of: iframe blank.</error>');
       return 1;
     }
     $this->config->setAppValue(Application::APP_ID, 'webapp_allowed_targets', implode(',', $targets));

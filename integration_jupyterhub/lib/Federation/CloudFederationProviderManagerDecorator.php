@@ -121,6 +121,14 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       $this->logger->warning('jupyter_url is not configured; cannot build webapp URI, passing share through unchanged');
       return $share;
     }
+    $mediaTypesRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_media_types', '');
+    $mediaTypes = WebappCapabilityDiscovery::normaliseMediaTypes(
+      $mediaTypesRaw === '' ? [] : explode(',', $mediaTypesRaw),
+    );
+    if ($mediaTypes === []) {
+      $mediaTypes = WebappCapabilityDiscovery::DEFAULT_MEDIA_TYPES;
+    }
+
     $multi->setWebappShare(
       webdavUri: $this->urlGenerator->getAbsoluteURL('/public.php/webdav/'),
       webappUri: $webappUri,
@@ -128,7 +136,8 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
       target: $targets,
       permissions: $permissions,
       appName: 'Jupyter',
-      mediaType: 'application/vnd.jupyter',
+      appIconHint: 'application/vnd.jupyter',
+      mediaTypes: $mediaTypes,
       mustExchangeToken: true,
     );
 

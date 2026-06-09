@@ -28,9 +28,7 @@ use OCA\Jupyter\AppInfo\Application;
  *          "webapp": { uri, sharedSecret, targets, permissions, … }
  *        }
  *
- *    `targets` is the list of view targets (blank/redirect/iframe) the
- *    sender will accept the receiver to render in (intersection of both
- *    ends' caps).
+ *    `targets` is the intersection of both ends' caps (blank/iframe).
  *
  * Building the envelope is done in one shot via {@see setWebappShare()}.
  * NC's {@see CloudFederationShare::setProtocol()} is a whole-blob
@@ -43,11 +41,7 @@ use OCA\Jupyter\AppInfo\Application;
 class WebappCloudFederationShare extends CloudFederationShare
 {
   public const TARGET_IFRAME = 'iframe';
-  public const TARGET_REDIRECT = 'redirect';
-  /**
-   * `target=_blank` semantics — opens in a new window/tab.
-   * Wire value is `blank` per the OCM webapp draft.
-   */
+  // New window/tab or full-page redirect.
   public const TARGET_BLANK = 'blank';
 
   public function __construct(
@@ -89,7 +83,8 @@ class WebappCloudFederationShare extends CloudFederationShare
     array|string $target,
     array $permissions = ['read'],
     ?string $appName = null,
-    ?string $mediaType = null,
+    ?string $appIconHint = null,
+    ?array $mediaTypes = null,
     bool $mustExchangeToken = true,
   ): void {
     $webdav = [
@@ -110,10 +105,11 @@ class WebappCloudFederationShare extends CloudFederationShare
     if ($appName !== null) {
       $webapp['appName'] = $appName;
     }
-    if ($mediaType !== null) {
-      // Media (MIME) type of the share; the receiver picks a themed icon
-      // from it (OCM-API#368). e.g. application/vnd.jupyter.
-      $webapp['mediaType'] = $mediaType;
+    if ($appIconHint !== null) {
+      $webapp['appIconHint'] = $appIconHint;
+    }
+    if ($mediaTypes !== null && $mediaTypes !== []) {
+      $webapp['mediaTypes'] = array_values($mediaTypes);
     }
 
     $this->setProtocol([

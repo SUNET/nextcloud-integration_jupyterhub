@@ -24,7 +24,7 @@ class GetWebappTargets extends Command
   {
     $this
       ->setName('integration_jupyterhub:get-webapp-targets')
-      ->setDescription('Prints the view targets (iframe/redirect/blank) offered in webapp shares.');
+      ->setDescription('Prints the view targets (iframe/blank) offered in webapp shares.');
   }
 
   protected function execute(InputInterface $input, OutputInterface $output): int
