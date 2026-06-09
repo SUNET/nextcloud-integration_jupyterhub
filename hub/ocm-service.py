@@ -694,7 +694,7 @@ class OpenHandler(RequestHandler):
     def check_xsrf_cookie(self):
         return
 
-    def post(self):
+    def post(self, relpath=None):
         ct = self.request.headers.get("Content-Type", "")
         if not ct.startswith("application/x-www-form-urlencoded"):
             raise HTTPError(415, f"unsupported Content-Type: {ct}")
@@ -748,6 +748,14 @@ class OpenHandler(RequestHandler):
         next_url = (
             f'/user/{quote(username, safe="@")}/{quote(server_name, safe="")}/lab'
         )
+        if relpath:
+            # A path suffix on the open URI names a file within the
+            # shared folder; open the lab directly on it.
+            parts = [p for p in relpath.split("/") if p not in ("", ".")]
+            if ".." in parts:
+                raise HTTPError(400, "invalid path")
+            if parts:
+                next_url += "/tree/" + quote("/".join(parts))
         self._render_handoff(token, next_url, rec.name, redirect_uri)
 
     def _render_handoff(
@@ -849,7 +857,10 @@ def main():
     prefix = os.environ["JUPYTERHUB_SERVICE_PREFIX"]
     app = Application(
         [
-            (urllib.parse.urljoin(prefix, "open"), OpenHandler),
+            # Optional path suffix: the OCM webapp uri acts as a root
+            # path, so receivers may append a file path within the
+            # shared folder to open it directly.
+            (urllib.parse.urljoin(prefix, "open") + r"(?:/(.*))?", OpenHandler),
             (urllib.parse.urljoin(prefix, "close"), CloseHandler),
             (urllib.parse.urljoin(prefix, "shares"), SharesHandler),
             (prefix + "/?", PingHandler),

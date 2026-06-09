@@ -13,6 +13,7 @@ use OCA\Jupyter\Federation\WebappShareIntent;
 use OCA\Jupyter\Listener\CSPListener;
 use OCA\Jupyter\Listener\HasNotebookMetadataListener;
 use OCA\Jupyter\Listener\LoadFilesScriptListener;
+use OCA\Jupyter\Listener\LocalOCMDiscoveryListener;
 use OCA\Jupyter\Listener\ShareDeletedListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
@@ -26,6 +27,7 @@ use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\FilesMetadata\Event\MetadataLiveEvent;
 use OCP\IURLGenerator;
+use OCP\OCM\Events\LocalOCMDiscoveryEvent;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use OCP\Share\Events\ShareDeletedEvent;
 use Psr\Log\LoggerInterface;
@@ -53,6 +55,7 @@ class Application extends App implements IBootstrap
   {
     $context->registerEventListener(AddContentSecurityPolicyEvent::class, CSPListener::class);
     $context->registerEventListener(LoadAdditionalScriptsEvent::class, LoadFilesScriptListener::class);
+    $context->registerEventListener(LocalOCMDiscoveryEvent::class, LocalOCMDiscoveryListener::class);
 
     // FilesMetadata: compute the boolean "has notebook?" for folders so
     // the Files-app action can decide synchronously, and keep the

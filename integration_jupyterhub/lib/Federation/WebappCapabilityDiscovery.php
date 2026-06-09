@@ -110,6 +110,27 @@ class WebappCapabilityDiscovery
   }
 
   /**
+   * Whether the remote can complete the OCM code flow: it must expose
+   * the `exchange-token` capability and a tokenEndPoint. Webapp shares
+   * mandate token exchange, so a share to a peer without this is
+   * unusable and should not be created.
+   */
+  public function remoteSupportsTokenExchange(string $remote): bool
+  {
+    try {
+      $provider = $this->discovery->discover($remote, false);
+    } catch (OCMProviderException $e) {
+      $this->logger->debug('OCM discovery failed for {remote}: {msg}', ['remote' => $remote, 'msg' => $e->getMessage()]);
+      return false;
+    }
+    if (!$provider->isEnabled()) {
+      return false;
+    }
+    return in_array('exchange-token', $provider->getCapabilities(), true)
+      && $provider->getTokenEndPoint() !== '';
+  }
+
+  /**
    * Drop entries not in the wire vocabulary, dedupe, preserve order.
    * Shared by the admin-save path and the send path.
    *

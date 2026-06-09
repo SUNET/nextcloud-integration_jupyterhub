@@ -87,15 +87,23 @@ class WebappShareController extends Controller
       return new DataResponse(['error' => 'folder does not contain any .ipynb file'], Http::STATUS_BAD_REQUEST);
     }
 
-    // Compute the wire target list = user prefs ∩ sender caps ∩ remote caps.
     $remoteHost = $this->extractHost($shareWith);
-    $remoteSupported = $remoteHost === null
-      ? WebappCapabilityDiscovery::ALL_TARGETS
-      : $this->discovery->remoteSupportedTargets($remoteHost);
+    if ($remoteHost === null) {
+      return new DataResponse(['error' => 'invalid recipient cloud id'], Http::STATUS_BAD_REQUEST);
+    }
+    // Webapp shares mandate token exchange; refuse when the recipient
+    // cannot complete the code flow.
+    if (!$this->discovery->remoteSupportsTokenExchange($remoteHost)) {
+      return new DataResponse([
+        'error' => $remoteHost . ' does not support OCM token exchange (exchange-token)',
+      ], Http::STATUS_BAD_GATEWAY);
+    }
+    // Compute the wire target list = user prefs ∩ sender caps ∩ remote caps.
+    $remoteSupported = $this->discovery->remoteSupportedTargets($remoteHost);
     $targets = $this->discovery->intersect($requestedTargets, $remoteSupported);
     if ($targets === []) {
       return new DataResponse([
-        'error' => 'no overlapping webapp target between this server and ' . ($remoteHost ?? 'remote'),
+        'error' => 'no overlapping webapp target between this server and ' . $remoteHost,
       ], Http::STATUS_BAD_GATEWAY);
     }
 
