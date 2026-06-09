@@ -704,9 +704,12 @@ class OpenHandler(RequestHandler):
             raise HTTPError(400, "access_token missing")
         # access_token_ttl: WOPI-compat, ignored; JWT.exp is authoritative.
         self.get_body_argument("access_token_ttl", default=None)
-        # Where the receiver refreshes a lapsed token (OCM-API#368); passed
-        # through to ocm-login so the gateway bounces lapsed users there.
-        redirect_uri = self.get_body_argument("redirect_uri", default="")
+        # Where the receiver refreshes a lapsed token; forwarded to
+        # ocm-login (internal field name redirect_uri) so the gateway
+        # bounces lapsed users there.
+        redirect_uri = self.get_body_argument(
+            "expired_session_redirect_uri", default=""
+        )
 
         claims = verify_access_token(token)
         iss_domain = urlparse(claims["iss"]).netloc
