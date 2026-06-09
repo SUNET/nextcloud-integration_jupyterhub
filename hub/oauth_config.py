@@ -60,12 +60,28 @@ def _verify_ocm_jwt(token):
     )
 
 
-def _receiver_root_from_aud(aud):
+def _receiver_host_from_aud(aud):
     # aud is the shareWith cloud id (e.g. "bob@bob.example" or
-    # "bob@https://bob.example"); the receiver root is its host.
+    # "bob@https://bob.example"); pull out the bare host.
     host = aud.rsplit("@", 1)[-1] if "@" in aud else aud
-    host = re.sub(r"^https?://", "", host).strip().rstrip("/")
+    return re.sub(r"^https?://", "", host).strip().rstrip("/").split("/")[0]
+
+
+def _receiver_root_from_aud(aud):
+    host = _receiver_host_from_aud(aud)
     return f"https://{host}/" if host else None
+
+
+def _refresh_target(redirect_uri, aud):
+    # Where to bounce a lapsed OCM user. Prefer the receiver-supplied
+    # redirect_uri (OCM-API#368) but only if it's an https URL on the same
+    # host as the token's audience (the receiver) — otherwise a valid token
+    # could aim the redirect anywhere. Fall back to the receiver root.
+    if redirect_uri:
+        p = urlparse(redirect_uri)
+        if p.scheme == "https" and p.netloc.lower() == _receiver_host_from_aud(aud).lower():
+            return redirect_uri
+    return _receiver_root_from_aud(aud)
 
 
 def _is_ocm_user(user):
@@ -105,21 +121,22 @@ class OCMLoginHandler(BaseHandler):
             {"name": username, "auth_state": {"ocm_access_token": access_token}}
         )
         self.set_login_cookie(user)
-        # Remember the receiver root (from shareWith/aud) in a signed cookie so
-        # the gateway can bounce the user back there once the token lapses.
-        receiver_root = _receiver_root_from_aud(claims["aud"])
-        if receiver_root:
-            self.set_secure_cookie("ocm_receiver_root", receiver_root)
+        # Remember where to bounce the user once the token lapses: the
+        # receiver-supplied redirect_uri, else the receiver root. Signed
+        # cookie — auth_state is unreachable once the user is de-authed.
+        target = _refresh_target(self.get_argument("redirect_uri", ""), claims["aud"])
+        if target:
+            self.set_secure_cookie("ocm_redirect_uri", target)
         self.redirect(next_url)
 
 
 class OCMGatewayHandler(BaseHandler):
-    # login_url points here. A lapsed OCM user (signed receiver cookie) is sent
+    # login_url points here. A lapsed OCM user (signed redirect cookie) is sent
     # back to their receiver to re-mint; everyone else goes to OAuth login.
     def get(self):
-        root = self.get_secure_cookie("ocm_receiver_root")
-        if root:
-            self.redirect(root.decode())
+        target = self.get_secure_cookie("ocm_redirect_uri")
+        if target:
+            self.redirect(target.decode())
             return
         next_url = self.get_argument("next", "")
         self.redirect(

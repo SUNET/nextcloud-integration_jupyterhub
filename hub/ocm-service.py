@@ -704,6 +704,9 @@ class OpenHandler(RequestHandler):
             raise HTTPError(400, "access_token missing")
         # access_token_ttl: WOPI-compat, ignored; JWT.exp is authoritative.
         self.get_body_argument("access_token_ttl", default=None)
+        # Where the receiver refreshes a lapsed token (OCM-API#368); passed
+        # through to ocm-login so the gateway bounces lapsed users there.
+        redirect_uri = self.get_body_argument("redirect_uri", default="")
 
         claims = verify_access_token(token)
         iss_domain = urlparse(claims["iss"]).netloc
@@ -742,10 +745,10 @@ class OpenHandler(RequestHandler):
         next_url = (
             f'/user/{quote(username, safe="@")}/{quote(server_name, safe="")}/lab'
         )
-        self._render_handoff(token, next_url, rec.name)
+        self._render_handoff(token, next_url, rec.name, redirect_uri)
 
     def _render_handoff(
-        self, access_token: str, next_url: str, share_name: str
+        self, access_token: str, next_url: str, share_name: str, redirect_uri: str = ""
     ) -> None:
         """Auto-submit a form to /hub/ocm-login so the hub sets a session cookie.
 
@@ -760,11 +763,18 @@ class OpenHandler(RequestHandler):
         action = html_mod.escape(OCM_LOGIN_URL, quote=True)
         at_attr = html_mod.escape(access_token, quote=True)
         next_attr = html_mod.escape(next_url, quote=True)
+        redirect_attr = html_mod.escape(redirect_uri, quote=True)
 
+        redirect_field = (
+            f'<input type="hidden" name="redirect_uri" value="{redirect_attr}">'
+            if redirect_uri
+            else ""
+        )
         body = (
             f'<form id="f" method="POST" action="{action}" target="_self">'
             f'<input type="hidden" name="access_token" value="{at_attr}">'
             f'<input type="hidden" name="next" value="{next_attr}">'
+            f"{redirect_field}"
             "</form>"
             '<script>document.getElementById("f").submit()</script>'
         )
