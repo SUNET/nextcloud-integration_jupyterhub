@@ -87,13 +87,16 @@ class WebappCloudFederationShare extends CloudFederationShare
     ?array $mediaTypes = null,
     bool $mustExchangeToken = true,
   ): void {
+    // Requirements must agree across all protocols in the payload.
+    $requirements = $mustExchangeToken ? ['must-exchange-token'] : [];
+
     $webdav = [
       'uri' => $webdavUri,
       'sharedSecret' => $sharedSecret,
       'permissions' => $permissions,
     ];
-    if ($mustExchangeToken) {
-      $webdav['requirements'] = ['must-exchange-token'];
+    if ($requirements !== []) {
+      $webdav['requirements'] = $requirements;
     }
 
     $webapp = [
@@ -102,6 +105,9 @@ class WebappCloudFederationShare extends CloudFederationShare
       'targets' => is_array($target) ? array_values($target) : [$target],
       'permissions' => $permissions,
     ];
+    if ($requirements !== []) {
+      $webapp['requirements'] = $requirements;
+    }
     if ($appName !== null) {
       $webapp['appName'] = $appName;
     }
