@@ -126,7 +126,7 @@ class WebappCapabilityDiscovery
     if (!$provider->isEnabled()) {
       return false;
     }
-    return in_array('exchange-token', $provider->getCapabilities(), true)
+    return $provider->getCapabilities()->hasExchangeToken()
       && $provider->getTokenEndPoint() !== '';
   }
 
