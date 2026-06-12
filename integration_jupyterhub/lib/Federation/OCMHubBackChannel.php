@@ -6,7 +6,6 @@ declare(strict_types=1);
 
 namespace OCA\Jupyter\Federation;
 
-use OC\Authentication\Token\IProvider;
 use OC\OCM\OCMSignatoryManager;
 use OC\OCM\Rfc9421SignatoryManager;
 use OCA\Jupyter\AppInfo\Application;
@@ -20,9 +19,10 @@ use Psr\Log\LoggerInterface;
 /**
  * Pushes a webapp share envelope to the paired JupyterHub's
  * /services/ocm/shares back channel. Same RFC 9421 "ocm" signature
- * the receiver-bound OCM share uses; sharedSecret in each protocol
- * entry is replaced by clientId (the id of the PublicKeyToken NC
- * minted for the share at FederatedShareProvider::createFederatedShare).
+ * the receiver-bound OCM share uses; sharedSecret is stripped from
+ * each protocol entry — the hub never receives any OCM secret. The
+ * hub keys the share by (sender domain, providerId), which the
+ * access token's client_id claim must equal (OCM-API#370).
  */
 class OCMHubBackChannel
 {
@@ -30,7 +30,6 @@ class OCMHubBackChannel
     private IClientService $clientService,
     private ISignatureManager $signatureManager,
     private OCMSignatoryManager $signatoryManager,
-    private IProvider $tokenProvider,
     private ICloudIdManager $cloudIdManager,
     private IConfig $config,
     private LoggerInterface $logger,
@@ -41,7 +40,7 @@ class OCMHubBackChannel
    * @throws OCMBackChannelException if the hub does not acknowledge the
    *   envelope; the caller must then abort the outbound OCM share.
    */
-  public function push(WebappCloudFederationShare $share, string $sharedSecret): void
+  public function push(WebappCloudFederationShare $share): void
   {
     $hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
     if ($hubBase === '') {
@@ -50,20 +49,12 @@ class OCMHubBackChannel
       throw new OCMBackChannelException('JupyterHub URL is not configured');
     }
 
-    try {
-      $token = $this->tokenProvider->getToken($sharedSecret);
-    } catch (\Throwable $e) {
-      throw new OCMBackChannelException('Cannot resolve clientId from sharedSecret', 0, $e);
-    }
-    $clientId = (string)$token->getId();
-
     $protocol = $share->getProtocol();
     foreach (['webdav', 'webapp'] as $entry) {
       if (isset($protocol[$entry]['sharedSecret'])) {
         unset($protocol[$entry]['sharedSecret']);
       }
     }
-    $protocol['webapp']['clientId'] = $clientId;
 
     $payload = [
       'shareWith' => $share->getShareWith(),
@@ -114,15 +105,14 @@ class OCMHubBackChannel
       'url' => $url,
       'status' => $status,
       'providerId' => $share->getProviderId(),
-      'clientId' => $clientId,
     ]);
   }
 
   /**
    * Tell the hub to reap the notebook server it spawned for this share.
    * Best-effort: unlike push() a failure must never block the unshare, so
-   * everything here only logs. The hub matches the share by (sender, clientId)
-   * and is idempotent, so a non-webapp share simply gets "gone".
+   * everything here only logs. The hub matches the share by (sender,
+   * providerId) and is idempotent, so a non-webapp share simply gets "gone".
    */
   public function close(IShare $share): void
   {
@@ -131,17 +121,12 @@ class OCMHubBackChannel
       return;
     }
 
-    try {
-      // clientId = id of the PublicKeyToken whose value is the share secret,
-      // the same key push() registered the share under.
-      $clientId = (string)$this->tokenProvider->getToken($share->getToken())->getId();
-    } catch (\Throwable $e) {
-      // No resolvable token => nothing we registered with the hub.
-      return;
-    }
+    // providerId = the federated share id, the same key push() registered
+    // the share under.
+    $providerId = (string)$share->getId();
 
     $sender = $this->cloudIdManager->getCloudId($share->getShareOwner(), null)->getId();
-    $body = (string)json_encode(['sender' => $sender, 'clientId' => $clientId], JSON_UNESCAPED_SLASHES);
+    $body = (string)json_encode(['sender' => $sender, 'providerId' => $providerId], JSON_UNESCAPED_SLASHES);
     $url = $hubBase . '/services/ocm/close';
 
     try {
@@ -157,8 +142,8 @@ class OCMHubBackChannel
         'timeout' => 10,
       ]);
     } catch (\Throwable $e) {
-      $this->logger->info('OCM hub reap failed for clientId {cid}: {msg}', [
-        'cid' => $clientId,
+      $this->logger->info('OCM hub reap failed for providerId {pid}: {msg}', [
+        'pid' => $providerId,
         'msg' => $e->getMessage(),
       ]);
     }

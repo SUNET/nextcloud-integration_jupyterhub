@@ -2,16 +2,16 @@
 
 POST /services/ocm/shares
     Back channel from the paired Nextcloud's integration_jupyterhub app.
-    Body is an OCM share-creation JSON with sharedSecret replaced by
-    clientId inside each protocol entry. RFC 9421 signed via the "ocm"
-    label using the sender's JWKS. Stored keyed by (sender-domain,
-    clientId).
+    Body is an OCM share-creation JSON with sharedSecret stripped from
+    each protocol entry. RFC 9421 signed via the "ocm" label using the
+    sender's JWKS. Stored keyed by (sender-domain, providerId).
 
 POST /services/ocm/open
     OCM webapp-sharing entrypoint. The receiver posts the spec-mandated
     form fields (access_token, access_token_ttl). The JWT is verified
     against the issuer's JWKS; the stored share is looked up by
-    (iss-domain, JWT.client_id) and owner/shareWith identities are
+    (iss-domain, JWT.client_id) — the client_id claim equals the
+    providerId per OCM-API#370 — and owner/shareWith identities are
     cross-checked.
 """
 
@@ -123,7 +123,6 @@ def _norm_ocm(addr: str) -> str:
 @dataclass
 class ShareRecord:
     sender_domain: str
-    client_id: str
     sender: str  # OCM address: <user>@<host>
     owner: str  # OCM address
     share_with: str  # OCM address
@@ -141,7 +140,6 @@ class ShareStore:
 
     _COLS = (
         "sender_domain",
-        "client_id",
         "sender",
         "owner",
         "share_with",
@@ -157,13 +155,20 @@ class ShareStore:
         self._lock = threading.Lock()
         self._path = path
         with self._lock, self._connect() as conn:
+            # Pre-OCM-API#370 schema was keyed by (sender_domain, client_id);
+            # records expire within SHARE_RECORD_TTL anyway, so just drop it.
+            legacy = conn.execute(
+                "SELECT 1 FROM pragma_table_info('shares') WHERE name='client_id'"
+            ).fetchone()
+            if legacy:
+                conn.execute("DROP TABLE shares")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS shares ("
-                "sender_domain TEXT NOT NULL, client_id TEXT NOT NULL,"
+                "sender_domain TEXT NOT NULL,"
                 "sender TEXT, owner TEXT, share_with TEXT, name TEXT,"
-                "provider_id TEXT, share_type TEXT, resource_type TEXT,"
+                "provider_id TEXT NOT NULL, share_type TEXT, resource_type TEXT,"
                 "protocol TEXT, created_at REAL,"
-                "PRIMARY KEY (sender_domain, client_id))"
+                "PRIMARY KEY (sender_domain, provider_id))"
             )
 
     def _connect(self) -> sqlite3.Connection:
@@ -178,7 +183,6 @@ class ShareStore:
                 "VALUES (" + ",".join("?" * len(self._COLS)) + ")",
                 (
                     rec.sender_domain,
-                    rec.client_id,
                     rec.sender,
                     rec.owner,
                     rec.share_with,
@@ -191,24 +195,23 @@ class ShareStore:
                 ),
             )
 
-    def get(self, sender_domain: str, client_id: str) -> ShareRecord | None:
+    def get(self, sender_domain: str, provider_id: str) -> ShareRecord | None:
         now = time.time()
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM shares WHERE sender_domain=? AND client_id=?",
-                (sender_domain, client_id),
+                "SELECT * FROM shares WHERE sender_domain=? AND provider_id=?",
+                (sender_domain, provider_id),
             ).fetchone()
             if row is None:
                 return None
             if now - row["created_at"] > SHARE_RECORD_TTL:
                 conn.execute(
-                    "DELETE FROM shares WHERE sender_domain=? AND client_id=?",
-                    (sender_domain, client_id),
+                    "DELETE FROM shares WHERE sender_domain=? AND provider_id=?",
+                    (sender_domain, provider_id),
                 )
                 return None
             return ShareRecord(
                 sender_domain=row["sender_domain"],
-                client_id=row["client_id"],
                 sender=row["sender"],
                 owner=row["owner"],
                 share_with=row["share_with"],
@@ -220,11 +223,11 @@ class ShareStore:
                 created_at=row["created_at"],
             )
 
-    def delete(self, sender_domain: str, client_id: str) -> None:
+    def delete(self, sender_domain: str, provider_id: str) -> None:
         with self._lock, self._connect() as conn:
             conn.execute(
-                "DELETE FROM shares WHERE sender_domain=? AND client_id=?",
-                (sender_domain, client_id),
+                "DELETE FROM shares WHERE sender_domain=? AND provider_id=?",
+                (sender_domain, provider_id),
             )
 
 
@@ -604,14 +607,12 @@ def _domain_of_ocm_address(addr: str) -> str:
     return addr.rsplit("@", 1)[1]
 
 
-def _extract_client_id(protocol: dict) -> str:
-    """Pull clientId from protocol.webapp; only multi+webapp is supported."""
+def _validate_protocol(protocol: dict) -> None:
+    """Only multi+webapp is supported."""
     if protocol.get("name") != "multi":
         raise HTTPError(400, 'protocol.name must be "multi"')
-    webapp = protocol.get("webapp")
-    if not isinstance(webapp, dict) or "clientId" not in webapp:
-        raise HTTPError(400, "protocol.webapp.clientId missing")
-    return str(webapp["clientId"])
+    if not isinstance(protocol.get("webapp"), dict):
+        raise HTTPError(400, "protocol.webapp missing")
 
 
 def _assert_share_token_identity(
@@ -628,7 +629,7 @@ def _assert_share_token_identity(
 
 
 class SharesHandler(RequestHandler):
-    """Back channel: paired NC pushes share JSON (sharedSecret → clientId)."""
+    """Back channel: paired NC pushes share JSON (sharedSecret stripped)."""
 
     def check_xsrf_cookie(self):
         return
@@ -664,10 +665,9 @@ class SharesHandler(RequestHandler):
 
         try:
             protocol = payload["protocol"]
-            client_id = _extract_client_id(protocol)
+            _validate_protocol(protocol)
             rec = ShareRecord(
                 sender_domain=sender_domain,
-                client_id=client_id,
                 sender=sender,
                 owner=str(payload["owner"]),
                 share_with=str(payload["shareWith"]),
@@ -682,7 +682,7 @@ class SharesHandler(RequestHandler):
             raise HTTPError(400, f"missing field: {e.args[0]}")
 
         store.put(rec)
-        log(f"stored share ({sender_domain}, {client_id}) for {rec.share_with}")
+        log(f"stored share ({sender_domain}, {rec.provider_id}) for {rec.share_with}")
         self.set_status(201)
         self.set_header("content-type", "application/json")
         self.write(json.dumps({"status": "stored"}))
@@ -713,19 +713,20 @@ class OpenHandler(RequestHandler):
 
         claims = verify_access_token(token)
         iss_domain = urlparse(claims["iss"]).netloc
-        client_id = claims["client_id"]
+        # The client_id claim equals the share's providerId (OCM-API#370).
+        provider_id = claims["client_id"]
 
-        rec = store.get(iss_domain, client_id)
+        rec = store.get(iss_domain, provider_id)
         if rec is None:
             raise HTTPError(404, "no share record for this token")
 
         _assert_share_token_identity(claims, iss_domain, rec)
 
         share_with = _norm_ocm(rec.share_with)
-        log(f"opening share ({iss_domain}, {client_id}) for {share_with}")
+        log(f"opening share ({iss_domain}, {provider_id}) for {share_with}")
 
         username = f"ocm:{share_with}"
-        server_name = f"share-{client_id[:12]}"
+        server_name = f"share-{provider_id[:12]}"
         webdav = rec.protocol["webdav"]
         webapp = rec.protocol["webapp"]
 
@@ -800,8 +801,8 @@ class OpenHandler(RequestHandler):
 
 class CloseHandler(RequestHandler):
     """Reap a share's notebook server. Sender-driven: the paired NC signs a
-    back-channel POST (sender + clientId), same auth as /shares. Idempotent —
-    an already-gone share returns success so the sender can fire-and-forget."""
+    back-channel POST (sender + providerId), same auth as /shares. Idempotent
+    — an already-gone share returns success so the sender can fire-and-forget."""
 
     def check_xsrf_cookie(self):
         return
@@ -823,11 +824,11 @@ class CloseHandler(RequestHandler):
 
         verify_ocm_signature(self, body, sender_domain)
 
-        client_id = str(payload.get("clientId", ""))
-        if not client_id:
-            raise HTTPError(400, "clientId missing")
+        provider_id = str(payload.get("providerId", ""))
+        if not provider_id:
+            raise HTTPError(400, "providerId missing")
 
-        rec = store.get(sender_domain, client_id)
+        rec = store.get(sender_domain, provider_id)
         if rec is None:
             # Already reaped / never stored — nothing to do.
             self.set_status(200)
@@ -837,10 +838,10 @@ class CloseHandler(RequestHandler):
 
         share_with = _norm_ocm(rec.share_with)
         username = f"ocm:{share_with}"
-        server_name = f"share-{client_id[:12]}"
+        server_name = f"share-{provider_id[:12]}"
         hub_delete_server(username, server_name)
-        store.delete(sender_domain, client_id)
-        log(f"closed share ({sender_domain}, {client_id}) for {share_with}")
+        store.delete(sender_domain, provider_id)
+        log(f"closed share ({sender_domain}, {provider_id}) for {share_with}")
 
         self.set_status(200)
         self.set_header("content-type", "application/json")

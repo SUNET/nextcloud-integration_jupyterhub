@@ -144,7 +144,7 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
     $this->logger->info('Rewrote OCM share to {recipient} into multi-protocol webapp share', [
       'recipient' => $share->getShareWith(),
     ]);
-    $this->hubBackChannel->push($multi, $token);
+    $this->hubBackChannel->push($multi);
     return $multi;
   }
 

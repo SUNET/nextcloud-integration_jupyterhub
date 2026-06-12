@@ -1,7 +1,7 @@
 debug:
   enabled: true
 hub:
-  # OCM webapp shares launch as named servers (share-<clientId>), so named
+  # OCM webapp shares launch as named servers (share-<providerId>), so named
   # servers must be enabled or the hub 400s the start and the /share-<id>/
   # path 404s on the default server.
   allowNamedServers: true
@@ -555,16 +555,16 @@ hub:
 
         POST /services/ocm/shares
             Back channel from the paired Nextcloud's integration_jupyterhub app.
-            Body is an OCM share-creation JSON with sharedSecret replaced by
-            clientId inside each protocol entry. RFC 9421 signed via the "ocm"
-            label using the sender's JWKS. Stored keyed by (sender-domain,
-            clientId).
+            Body is an OCM share-creation JSON with sharedSecret stripped from
+            each protocol entry. RFC 9421 signed via the "ocm" label using the
+            sender's JWKS. Stored keyed by (sender-domain, providerId).
 
         POST /services/ocm/open
             OCM webapp-sharing entrypoint. The receiver posts the spec-mandated
             form fields (access_token, access_token_ttl). The JWT is verified
             against the issuer's JWKS; the stored share is looked up by
-            (iss-domain, JWT.client_id) and owner/shareWith identities are
+            (iss-domain, JWT.client_id) — the client_id claim equals the
+            providerId per OCM-API#370 — and owner/shareWith identities are
             cross-checked.
         """
         import base64
@@ -651,7 +651,6 @@ hub:
         @dataclass
         class ShareRecord:
             sender_domain: str
-            client_id: str
             sender: str
             owner: str
             share_with: str
@@ -664,7 +663,7 @@ hub:
 
         class ShareStore:
             # SQLite-backed so share records survive hub restarts.
-            _COLS = ('sender_domain', 'client_id', 'sender', 'owner', 'share_with',
+            _COLS = ('sender_domain', 'sender', 'owner', 'share_with',
                      'name', 'provider_id', 'share_type', 'resource_type',
                      'protocol', 'created_at')
 
@@ -672,13 +671,21 @@ hub:
                 self._lock = threading.Lock()
                 self._path = path
                 with self._lock, self._connect() as conn:
+                    # Pre-OCM-API#370 schema was keyed by (sender_domain,
+                    # client_id); records expire within SHARE_RECORD_TTL
+                    # anyway, so just drop it.
+                    legacy = conn.execute(
+                        "SELECT 1 FROM pragma_table_info('shares') WHERE name='client_id'"
+                    ).fetchone()
+                    if legacy:
+                        conn.execute('DROP TABLE shares')
                     conn.execute(
                         'CREATE TABLE IF NOT EXISTS shares ('
-                        'sender_domain TEXT NOT NULL, client_id TEXT NOT NULL,'
+                        'sender_domain TEXT NOT NULL,'
                         'sender TEXT, owner TEXT, share_with TEXT, name TEXT,'
-                        'provider_id TEXT, share_type TEXT, resource_type TEXT,'
+                        'provider_id TEXT NOT NULL, share_type TEXT, resource_type TEXT,'
                         'protocol TEXT, created_at REAL,'
-                        'PRIMARY KEY (sender_domain, client_id))'
+                        'PRIMARY KEY (sender_domain, provider_id))'
                     )
 
             def _connect(self):
@@ -691,28 +698,28 @@ hub:
                     conn.execute(
                         'INSERT OR REPLACE INTO shares (' + ','.join(self._COLS) + ') '
                         'VALUES (' + ','.join('?' * len(self._COLS)) + ')',
-                        (rec.sender_domain, rec.client_id, rec.sender, rec.owner,
+                        (rec.sender_domain, rec.sender, rec.owner,
                          rec.share_with, rec.name, rec.provider_id, rec.share_type,
                          rec.resource_type, json.dumps(rec.protocol), rec.created_at),
                     )
 
-            def get(self, sender_domain, client_id):
+            def get(self, sender_domain, provider_id):
                 now = time.time()
                 with self._lock, self._connect() as conn:
                     row = conn.execute(
-                        'SELECT * FROM shares WHERE sender_domain=? AND client_id=?',
-                        (sender_domain, client_id),
+                        'SELECT * FROM shares WHERE sender_domain=? AND provider_id=?',
+                        (sender_domain, provider_id),
                     ).fetchone()
                     if row is None:
                         return None
                     if now - row['created_at'] > SHARE_RECORD_TTL:
                         conn.execute(
-                            'DELETE FROM shares WHERE sender_domain=? AND client_id=?',
-                            (sender_domain, client_id),
+                            'DELETE FROM shares WHERE sender_domain=? AND provider_id=?',
+                            (sender_domain, provider_id),
                         )
                         return None
                     return ShareRecord(
-                        sender_domain=row['sender_domain'], client_id=row['client_id'],
+                        sender_domain=row['sender_domain'],
                         sender=row['sender'], owner=row['owner'],
                         share_with=row['share_with'], name=row['name'],
                         provider_id=row['provider_id'], share_type=row['share_type'],
@@ -932,13 +939,11 @@ hub:
                 raise HTTPError(400, f'malformed OCM address: {addr}')
             return addr.rsplit('@', 1)[1]
 
-        def _extract_client_id(protocol):
+        def _validate_protocol(protocol):
             if protocol.get('name') != 'multi':
                 raise HTTPError(400, 'protocol.name must be "multi"')
-            webapp = protocol.get('webapp')
-            if not isinstance(webapp, dict) or 'clientId' not in webapp:
-                raise HTTPError(400, 'protocol.webapp.clientId missing')
-            return str(webapp['clientId'])
+            if not isinstance(protocol.get('webapp'), dict):
+                raise HTTPError(400, 'protocol.webapp missing')
 
         class SharesHandler(RequestHandler):
             def check_xsrf_cookie(self): return
@@ -957,9 +962,9 @@ hub:
                 verify_ocm_signature(self, body, sender_domain)
                 try:
                     protocol = payload['protocol']
-                    client_id = _extract_client_id(protocol)
+                    _validate_protocol(protocol)
                     rec = ShareRecord(
-                        sender_domain=sender_domain, client_id=client_id, sender=sender,
+                        sender_domain=sender_domain, sender=sender,
                         owner=str(payload['owner']), share_with=str(payload['shareWith']),
                         name=str(payload.get('name', '')), provider_id=str(payload['providerId']),
                         share_type=str(payload['shareType']), resource_type=str(payload['resourceType']),
@@ -968,7 +973,7 @@ hub:
                 except KeyError as e:
                     raise HTTPError(400, f'missing field: {e.args[0]}')
                 store.put(rec)
-                log(f'stored share ({sender_domain}, {client_id}) for {rec.share_with}')
+                log(f'stored share ({sender_domain}, {rec.provider_id}) for {rec.share_with}')
                 self.set_status(201)
                 self.set_header('content-type', 'application/json')
                 self.write(json.dumps({'status': 'stored'}))
@@ -985,8 +990,9 @@ hub:
                 self.get_body_argument('access_token_ttl', default=None)
                 claims = verify_access_token(token)
                 iss_domain = urlparse(claims['iss']).netloc
-                client_id = claims['client_id']
-                rec = store.get(iss_domain, client_id)
+                # client_id claim equals the share's providerId (OCM-API#370).
+                provider_id = claims['client_id']
+                rec = store.get(iss_domain, provider_id)
                 if rec is None:
                     raise HTTPError(404, 'no share record for this token')
 
@@ -1008,9 +1014,9 @@ hub:
                 if _norm_ocm(claims['aud']) != _norm_ocm(rec.share_with):
                     raise HTTPError(403, 'JWT aud does not match stored shareWith')
                 share_with = _norm_ocm(rec.share_with)
-                log(f'opening share ({iss_domain}, {client_id}) for {share_with}')
+                log(f'opening share ({iss_domain}, {provider_id}) for {share_with}')
                 username = f'ocm:{share_with}'
-                server_name = f'share-{client_id[:12]}'
+                server_name = f'share-{provider_id[:12]}'
                 webdav = rec.protocol['webdav']; webapp = rec.protocol['webapp']
                 hub_ensure_user(username)
                 hub_start_named_server(username, server_name, {
