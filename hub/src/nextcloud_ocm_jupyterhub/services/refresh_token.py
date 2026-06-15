@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Jupyter Development Team <https://jupyter.org/governance/projectlicense.html>
+# SPDX-License-Identifier: BSD-3-Clause
 """A token refresh service authenticating with the Hub.
 
 This service serves `/services/refresh-token/`,
@@ -17,11 +19,17 @@ from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.web import Application, HTTPError, RequestHandler, authenticated
 
-debug = os.environ.get("NEXTCLOUD_DEBUG_OAUTH", "false").lower() in ["true", "1", "yes"]
+
+def _debug() -> bool:
+    return os.environ.get("NEXTCLOUD_DEBUG_OAUTH", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
 
 def my_debug(s):
-    if debug:
+    if _debug():
         with open("/proc/1/fd/1", "a") as stdout:
             print(s, file=stdout)
 
@@ -38,12 +46,16 @@ class RefreshHandler(HubAuthenticated, RequestHandler):
         except requests.ConnectionError as e:
             my_debug(f"Error connecting to {url}: {e}")
             msg = f"Failed to connect to Hub API at {url}."
-            msg += f"  Is the Hub accessible at this URL (from host: {socket.gethostname()})?"
+            msg += (
+                "  Is the Hub accessible at this URL"
+                f" (from host: {socket.gethostname()})?"
+            )
 
             if "127.0.0.1" in url:
                 msg += (
                     "  Make sure to set c.JupyterHub.hub_ip to an IP accessible to"
-                    + " single-user servers if the servers are not on the same host as the Hub."
+                    " single-user servers if the servers are not on the same host as"
+                    " the Hub."
                 )
             raise HTTPError(500, msg)
 
@@ -53,15 +65,18 @@ class RefreshHandler(HubAuthenticated, RequestHandler):
         elif r.status_code == 403:
             my_debug(
                 "Lacking permission to check authorization with JupyterHub,"
-                + f" my auth token may have expired: [{r.status_code}] {r.reason}"
+                f" my auth token may have expired: [{r.status_code}] {r.reason}"
             )
             my_debug(r.text)
             raise HTTPError(
-                500, "Permission failure checking authorization, I may need a new token"
+                500,
+                "Permission failure checking authorization,"
+                " I may need a new token",
             )
         elif r.status_code >= 500:
             my_debug(
-                f"Upstream failure verifying auth token: [{r.status_code}] {r.reason}"
+                f"Upstream failure verifying auth token:"
+                f" [{r.status_code}] {r.reason}"
             )
             my_debug(r.text)
             raise HTTPError(502, "Failed to check authorization (upstream problem)")
@@ -94,7 +109,7 @@ class RefreshHandler(HubAuthenticated, RequestHandler):
 class PingHandler(RequestHandler):
 
     def get(self):
-        my_debug(f"DEBUG: In ping get")
+        my_debug("DEBUG: In ping get")
         self.set_header("content-type", "application/json")
         self.write(json.dumps({"ping": 1}))
 

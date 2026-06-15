@@ -22,7 +22,16 @@ use Psr\Log\LoggerInterface;
  * the receiver-bound OCM share uses; sharedSecret is stripped from
  * each protocol entry — the hub never receives any OCM secret. The
  * hub keys the share by (sender domain, providerId), which the
- * access token's client_id claim must equal (OCM-API#370).
+ * access token's `client_id` claim must equal.
+ *
+ * `providerId` here is the row id of the refresh token (`oc_authtoken.id`
+ * — the entity behind the share's sharedSecret). NC core's
+ * cloud_federation_api TokenController hard-codes JWT `client_id` to that
+ * same row id (see `(string)$token->getId()` in TokenController::accessToken),
+ * so this is the only identifier the receiver's hub will ever look up shares
+ * by. `$share->getProviderId()` and `$share->getId()` (the federated share
+ * row id) do NOT match what NC mints into the JWT — using either of those
+ * gives every `/services/ocm/open` a 404 "no share record".
  */
 class OCMHubBackChannel
 {
@@ -50,6 +59,18 @@ class OCMHubBackChannel
     }
 
     $protocol = $share->getProtocol();
+    // Resolve providerId from the sharedSecret BEFORE stripping it: the hub
+    // keys shares by the refresh-token row id (= JWT client_id), and the
+    // sharedSecret is the only handle we have to that token here.
+    $sharedSecret = (string)($protocol['webdav']['sharedSecret']
+      ?? $protocol['webapp']['sharedSecret']
+      ?? '');
+    $providerId = $this->resolveTokenId($sharedSecret);
+    if ($providerId === null) {
+      throw new OCMBackChannelException(
+        'Cannot resolve OCM share token row id for back-channel push'
+      );
+    }
     foreach (['webdav', 'webapp'] as $entry) {
       if (isset($protocol[$entry]['sharedSecret'])) {
         unset($protocol[$entry]['sharedSecret']);
@@ -60,7 +81,7 @@ class OCMHubBackChannel
       'shareWith' => $share->getShareWith(),
       'name' => $share->getResourceName(),
       'description' => $share->getDescription(),
-      'providerId' => $share->getProviderId(),
+      'providerId' => $providerId,
       'owner' => $share->getOwner(),
       'ownerDisplayName' => $share->getOwnerDisplayName(),
       'sender' => $share->getSharedBy() ?: $share->getOwner(),
@@ -104,7 +125,7 @@ class OCMHubBackChannel
     $this->logger->debug('OCM back channel pushed', [
       'url' => $url,
       'status' => $status,
-      'providerId' => $share->getProviderId(),
+      'providerId' => $providerId,
     ]);
   }
 
@@ -121,9 +142,19 @@ class OCMHubBackChannel
       return;
     }
 
-    // providerId = the federated share id, the same key push() registered
-    // the share under.
-    $providerId = (string)$share->getId();
+    // Same key push() registered the share under: the refresh-token row id
+    // (= JWT client_id). $share->getToken() is the share's sharedSecret, which
+    // is the refresh-token string the receiver later exchanges at the OCM
+    // token endpoint.
+    $providerId = $this->resolveTokenId((string)$share->getToken());
+    if ($providerId === null) {
+      // Best-effort reap — without an id the hub can't locate the share. Bail
+      // quietly: a stale notebook server will hit the 24h sweep instead.
+      $this->logger->info('OCM hub reap skipped: no refresh-token row id for share {sid}', [
+        'sid' => $share->getId(),
+      ]);
+      return;
+    }
 
     $sender = $this->cloudIdManager->getCloudId($share->getShareOwner(), null)->getId();
     $body = (string)json_encode(['sender' => $sender, 'providerId' => $providerId], JSON_UNESCAPED_SLASHES);
@@ -146,6 +177,32 @@ class OCMHubBackChannel
         'pid' => $providerId,
         'msg' => $e->getMessage(),
       ]);
+    }
+  }
+
+  /**
+   * Look up the `oc_authtoken` row id for a sharedSecret (refresh token).
+   * Returns null if the token is unknown or the provider is unavailable;
+   * callers decide whether that's fatal.
+   *
+   * Uses a service locator rather than constructor injection: the token
+   * provider lives in the internal `\OC\…` namespace, and `WebappShareController`
+   * already accesses it the same way.
+   */
+  private function resolveTokenId(string $sharedSecret): ?string
+  {
+    if ($sharedSecret === '') {
+      return null;
+    }
+    try {
+      /** @var \OC\Authentication\Token\IProvider $tp */
+      $tp = \OCP\Server::get(\OC\Authentication\Token\IProvider::class);
+      return (string)$tp->getToken($sharedSecret)->getId();
+    } catch (\Throwable $e) {
+      $this->logger->warning('Could not resolve OCM share token row id: {msg}', [
+        'msg' => $e->getMessage(),
+      ]);
+      return null;
     }
   }
 }
