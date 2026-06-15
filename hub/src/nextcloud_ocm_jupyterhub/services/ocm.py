@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OCM webapp-sharing endpoints for JupyterHub.
 
 POST /services/ocm/shares
@@ -36,15 +38,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
 from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
-from jwt import PyJWKClient
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.web import Application, HTTPError, RequestHandler
 
-DEBUG = os.environ.get("NEXTCLOUD_DEBUG_OAUTH", "false").lower() in ("true", "1", "yes")
-JWKS_CLIENT_TTL = int(os.environ.get("OCM_JWKS_TTL", "300"))
-SHARE_RECORD_TTL = int(os.environ.get("OCM_SHARE_TTL", "86400"))
-SIG_FRESHNESS_WINDOW = int(os.environ.get("OCM_SIG_FRESHNESS", "300"))
+from ..jwt_verify import get_jwks_client
 
 REQUIRED_COVERED = (
     "@method",
@@ -54,41 +52,51 @@ REQUIRED_COVERED = (
     "date",
 )
 
-# Comma-separated allowlist of NC domains permitted to push via /shares.
-# Required — empty allowlist means /shares rejects all requests.
-TRUSTED_BACK_CHANNEL_DOMAINS = frozenset(
-    d.strip()
-    for d in os.environ.get("OCM_TRUSTED_BACK_CHANNEL_DOMAINS", "").split(",")
-    if d.strip()
-)
 
-HUB_API_URL = os.environ.get("JUPYTERHUB_API_URL", "").rstrip("/")
-HUB_API_TOKEN = os.environ.get("JUPYTERHUB_API_TOKEN", "")
-OCM_LOGIN_URL = os.environ.get("OCM_LOGIN_URL", "/hub/ocm-login")
+def _debug() -> bool:
+    return os.environ.get("NEXTCLOUD_DEBUG_OAUTH", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
 
 def log(msg):
-    if DEBUG:
+    if _debug():
         with open("/proc/1/fd/1", "a") as stdout:
             print(f"[ocm] {msg}", file=stdout)
 
 
 # ---------------------------------------------------------------------------
-# JWKS cache
+# Per-process config (read once in main(); the handlers reach them via the
+# module-level globals below)
 # ---------------------------------------------------------------------------
 
-_jwks_clients: dict[str, tuple[PyJWKClient, float]] = {}
+SHARE_RECORD_TTL = 86400
+SIG_FRESHNESS_WINDOW = 300
+# Comma-separated allowlist of NC domains permitted to push via /shares.
+# Required — empty allowlist means /shares rejects all requests.
+TRUSTED_BACK_CHANNEL_DOMAINS: frozenset[str] = frozenset()
+HUB_API_URL = ""
+HUB_API_TOKEN = ""
+OCM_LOGIN_URL = "/hub/ocm-login"
 
 
-def get_jwks_client(domain: str) -> PyJWKClient:
-    now = time.time()
-    cached = _jwks_clients.get(domain)
-    if cached and now - cached[1] < JWKS_CLIENT_TTL:
-        return cached[0]
-    jwks_url = f"https://{domain}/.well-known/jwks.json"
-    client = PyJWKClient(jwks_url, cache_keys=True)
-    _jwks_clients[domain] = (client, now)
-    return client
+def _load_runtime_config() -> None:
+    """Re-read env-driven globals. Called from `main()` so importing this
+    module under a linter or test does not require the deployment env."""
+    global SHARE_RECORD_TTL, SIG_FRESHNESS_WINDOW, TRUSTED_BACK_CHANNEL_DOMAINS
+    global HUB_API_URL, HUB_API_TOKEN, OCM_LOGIN_URL
+    SHARE_RECORD_TTL = int(os.environ.get("OCM_SHARE_TTL", "86400"))
+    SIG_FRESHNESS_WINDOW = int(os.environ.get("OCM_SIG_FRESHNESS", "300"))
+    TRUSTED_BACK_CHANNEL_DOMAINS = frozenset(
+        d.strip()
+        for d in os.environ.get("OCM_TRUSTED_BACK_CHANNEL_DOMAINS", "").split(",")
+        if d.strip()
+    )
+    HUB_API_URL = os.environ.get("JUPYTERHUB_API_URL", "").rstrip("/")
+    HUB_API_TOKEN = os.environ.get("JUPYTERHUB_API_TOKEN", "")
+    OCM_LOGIN_URL = os.environ.get("OCM_LOGIN_URL", "/hub/ocm-login")
 
 
 def get_jwk_by_kid(domain: str, kid: str):
@@ -231,7 +239,14 @@ class ShareStore:
             )
 
 
-store = ShareStore(os.environ.get("OCM_STORE_PATH", "/srv/jupyterhub/ocm-shares.db"))
+# Initialised in main(); the handlers below reach it via the module global.
+store: "ShareStore | None" = None
+
+
+def _require_store() -> ShareStore:
+    if store is None:
+        raise RuntimeError("ShareStore not initialised; call main() first")
+    return store
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +395,8 @@ def verify_signature_primitive(
 def verify_ocm_signature(
     handler: RequestHandler, body: bytes, sender_domain: str
 ) -> None:
-    """Verify the request's "ocm"-labeled RFC 9421 signature against sender_domain's JWKS."""
+    """Verify the request's "ocm"-labeled RFC 9421 signature against
+    sender_domain's JWKS."""
     sig_input_hdr = handler.request.headers.get("Signature-Input")
     sig_hdr = handler.request.headers.get("Signature")
     if not sig_input_hdr or not sig_hdr:
@@ -487,7 +503,9 @@ def verify_ocm_signature(
     try:
         verify_signature_primitive(native_alg, jwk.key, bytes(sig_value), base)
     except InvalidSignature:
-        raise HTTPError(401, f"signature verification failed (target_uri={target_uri})")
+        raise HTTPError(
+            401, f"signature verification failed (target_uri={target_uri})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -510,10 +528,14 @@ def verify_access_token(token: str) -> dict:
         raise HTTPError(401, "iss must be an https URL")
 
     try:
-        signing_key = get_jwks_client(parsed.netloc).get_signing_key_from_jwt(token).key
+        signing_key = (
+            get_jwks_client(parsed.netloc).get_signing_key_from_jwt(token).key
+        )
     except Exception as e:
         log(f"JWKS lookup failed for {parsed.netloc}: {e}")
-        raise HTTPError(401, f"could not resolve signing key: {type(e).__name__}: {e}")
+        raise HTTPError(
+            401, f"could not resolve signing key: {type(e).__name__}: {e}"
+        )
 
     try:
         claims = jwt.decode(
@@ -531,10 +553,6 @@ def verify_access_token(token: str) -> dict:
 
     return claims
 
-
-# ---------------------------------------------------------------------------
-# Handlers
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # JupyterHub API client
@@ -563,7 +581,8 @@ def hub_ensure_user(name: str) -> None:
     rg = _hub_request("POST", "/groups/ocm/users", json={"users": [name]})
     if rg.status_code not in (200, 201):
         log(
-            f"warning: could not add {name} to ocm group: {rg.status_code} {rg.text[:200]}"
+            f"warning: could not add {name} to ocm group:"
+            f" {rg.status_code} {rg.text[:200]}"
         )
 
 
@@ -659,7 +678,7 @@ class SharesHandler(RequestHandler):
         sender_domain = _domain_of_ocm_address(sender)
 
         if sender_domain not in TRUSTED_BACK_CHANNEL_DOMAINS:
-            raise HTTPError(403, f"sender domain not in trusted back-channel allowlist")
+            raise HTTPError(403, "sender domain not in trusted back-channel allowlist")
 
         verify_ocm_signature(self, body, sender_domain)
 
@@ -681,7 +700,7 @@ class SharesHandler(RequestHandler):
         except KeyError as e:
             raise HTTPError(400, f"missing field: {e.args[0]}")
 
-        store.put(rec)
+        _require_store().put(rec)
         log(f"stored share ({sender_domain}, {rec.provider_id}) for {rec.share_with}")
         self.set_status(201)
         self.set_header("content-type", "application/json")
@@ -716,7 +735,11 @@ class OpenHandler(RequestHandler):
         # The client_id claim equals the share's providerId (OCM-API#370).
         provider_id = claims["client_id"]
 
-        rec = store.get(iss_domain, provider_id)
+        log(
+            f"open lookup: iss_domain={iss_domain!r} provider_id={provider_id!r}"
+            f" sub={claims.get('sub')!r} aud={claims.get('aud')!r}"
+        )
+        rec = _require_store().get(iss_domain, provider_id)
         if rec is None:
             raise HTTPError(404, "no share record for this token")
 
@@ -728,7 +751,6 @@ class OpenHandler(RequestHandler):
         username = f"ocm:{share_with}"
         server_name = f"share-{provider_id[:12]}"
         webdav = rec.protocol["webdav"]
-        webapp = rec.protocol["webapp"]
 
         hub_ensure_user(username)
         hub_start_named_server(
@@ -760,9 +782,14 @@ class OpenHandler(RequestHandler):
         self._render_handoff(token, next_url, rec.name, redirect_uri)
 
     def _render_handoff(
-        self, access_token: str, next_url: str, share_name: str, redirect_uri: str = ""
+        self,
+        access_token: str,
+        next_url: str,
+        share_name: str,
+        redirect_uri: str = "",
     ) -> None:
-        """Auto-submit a form to /hub/ocm-login so the hub sets a session cookie.
+        """Auto-submit a form to /hub/ocm-login so the hub sets a session
+        cookie.
 
         The receiver (e.g. ocmremotewebapp) already placed this response in
         the container the user chose — an embedded iframe, the current tab,
@@ -801,8 +828,9 @@ class OpenHandler(RequestHandler):
 
 class CloseHandler(RequestHandler):
     """Reap a share's notebook server. Sender-driven: the paired NC signs a
-    back-channel POST (sender + providerId), same auth as /shares. Idempotent
-    — an already-gone share returns success so the sender can fire-and-forget."""
+    back-channel POST (sender + providerId), same auth as /shares.
+    Idempotent — an already-gone share returns success so the sender can
+    fire-and-forget."""
 
     def check_xsrf_cookie(self):
         return
@@ -828,7 +856,7 @@ class CloseHandler(RequestHandler):
         if not provider_id:
             raise HTTPError(400, "providerId missing")
 
-        rec = store.get(sender_domain, provider_id)
+        rec = _require_store().get(sender_domain, provider_id)
         if rec is None:
             # Already reaped / never stored — nothing to do.
             self.set_status(200)
@@ -840,7 +868,7 @@ class CloseHandler(RequestHandler):
         username = f"ocm:{share_with}"
         server_name = f"share-{provider_id[:12]}"
         hub_delete_server(username, server_name)
-        store.delete(sender_domain, provider_id)
+        _require_store().delete(sender_domain, provider_id)
         log(f"closed share ({sender_domain}, {provider_id}) for {share_with}")
 
         self.set_status(200)
@@ -855,6 +883,11 @@ class PingHandler(RequestHandler):
 
 
 def main():
+    global store
+    _load_runtime_config()
+    store = ShareStore(
+        os.environ.get("OCM_STORE_PATH", "/srv/jupyterhub/ocm-shares.db")
+    )
     prefix = os.environ["JUPYTERHUB_SERVICE_PREFIX"]
     app = Application(
         [

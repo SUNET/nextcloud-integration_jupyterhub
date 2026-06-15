@@ -11,10 +11,10 @@ Files: integration_jupyterhub/l10n/*.js integration_jupyterhub/l10n/*.json
 Copyright: Nextcloud translators <https://www.transifex.com/nextcloud/>
 License: AGPL-3.0-or-later
 
-Files: integration_jupyterhub/img/*.svg hub/refresh-token.py hub/home.html
+Files: integration_jupyterhub/img/*.svg
 Copyright: Jupyter Development Team <https://jupyter.org/governance/projectlicense.html>
 License: BSD-3-Clause
 
-Files: hub/oauth_config.py hub/service_config.py hub/ocm-service.py hub/values.yaml publiccode.yml renovate.json
+Files: hub/values.yaml publiccode.yml renovate.json
 Copyright: Micke Nordin <kano@sunet.se>
 License: AGPL-3.0-or-later
