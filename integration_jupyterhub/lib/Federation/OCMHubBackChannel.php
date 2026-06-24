@@ -49,9 +49,11 @@ class OCMHubBackChannel
       throw new OCMBackChannelException('JupyterHub URL is not configured');
     }
 
+    // OCM-IP: every sharedSecret field, in every protocol entry, MUST be
+    // removed — the hub never receives any OCM secret.
     $protocol = $share->getProtocol();
-    foreach (['webdav', 'webapp'] as $entry) {
-      if (isset($protocol[$entry]['sharedSecret'])) {
+    foreach ($protocol as $entry => $value) {
+      if (is_array($value) && array_key_exists('sharedSecret', $value)) {
         unset($protocol[$entry]['sharedSecret']);
       }
     }
@@ -109,12 +111,13 @@ class OCMHubBackChannel
   }
 
   /**
-   * Tell the hub to reap the notebook server it spawned for this share.
-   * Best-effort: unlike push() a failure must never block the unshare, so
-   * everything here only logs. The hub matches the share by (sender,
-   * providerId) and is idempotent, so a non-webapp share simply gets "gone".
+   * Share Revocation Request (OCM-IP): tell the hub to stop serving the
+   * share and reap the notebook server it spawned. Best-effort: unlike
+   * push() a failure must never block the unshare, so everything here only
+   * logs. The hub matches the share by (sender, providerId) and is
+   * idempotent, so a non-webapp share simply gets "gone".
    */
-  public function close(IShare $share): void
+  public function revoke(IShare $share): void
   {
     $hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
     if ($hubBase === '') {
@@ -127,7 +130,7 @@ class OCMHubBackChannel
 
     $sender = $this->cloudIdManager->getCloudId($share->getShareOwner(), null)->getId();
     $body = (string)json_encode(['sender' => $sender, 'providerId' => $providerId], JSON_UNESCAPED_SLASHES);
-    $url = $hubBase . '/services/ocm/close';
+    $url = $hubBase . '/services/ocm/revoke';
 
     try {
       $signed = $this->signatureManager->signOutgoingRequestIClientPayload(
@@ -142,7 +145,7 @@ class OCMHubBackChannel
         'timeout' => 10,
       ]);
     } catch (\Throwable $e) {
-      $this->logger->info('OCM hub reap failed for providerId {pid}: {msg}', [
+      $this->logger->info('OCM hub revocation failed for providerId {pid}: {msg}', [
         'pid' => $providerId,
         'msg' => $e->getMessage(),
       ]);

@@ -40,7 +40,7 @@ class FileShareDeclineReaper implements ICloudFederationProvider
   {
     try {
       $share = \OCP\Server::get(FederatedShareProvider::class)->getShareById($providerId);
-      $this->hubBackChannel->close($share);
+      $this->hubBackChannel->revoke($share);
     } catch (\Throwable $e) {
       $this->logger->debug('Decline reap skipped for share {id}: {msg}', [
         'id' => $providerId,
