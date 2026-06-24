@@ -25,13 +25,18 @@ jobs:
           python-version: "3.12"
 
       - name: Install tools
-        run: pip install black isort
+        run: pip install black isort build
+
+      - name: Build sdist + wheel
+        # Catches pyproject.toml/package metadata regressions.
+        working-directory: hub
+        run: python -m build
 
       - name: Syntax check (py_compile)
-        run: python -m py_compile hub/*.py
+        run: python -m py_compile $(find hub/src -name '*.py')
 
       - name: isort --check-only
-        run: isort --check-only --diff hub/
+        run: isort --check-only --diff hub/src hub/example
 
       - name: black --check
-        run: black --check --diff hub/
+        run: black --check --diff hub/src hub/example
