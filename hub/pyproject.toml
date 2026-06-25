@@ -39,13 +39,6 @@ Issues = "https://github.com/SUNET/nextcloud-integration_jupyterhub/issues"
 # Operators can set `c.JupyterHub.authenticator_class = "nextcloud-ocm"`.
 nextcloud-ocm = "nextcloud_ocm_jupyterhub.authenticator:NextcloudOAuthenticator"
 
-[project.scripts]
-# Names JupyterHub uses in the managed-service `command` list. Mirror the
-# legacy filenames so an operator migrating from the exec-based layout only
-# needs to swap absolute paths for these console scripts.
-nextcloud-ocm-jupyterhub-service = "nextcloud_ocm_jupyterhub.services.ocm:main"
-nextcloud-ocm-jupyterhub-refresh-token = "nextcloud_ocm_jupyterhub.services.refresh_token:main"
-
 [tool.hatch.version]
 path = "src/nextcloud_ocm_jupyterhub/_version.py"
 
