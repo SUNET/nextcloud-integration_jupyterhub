@@ -30,12 +30,15 @@ class LocalOCMDiscoveryListener implements IEventListener
       return;
     }
 
-    // Send-only app: advertise the webapp sending role as an empty
-    // object under the resource type we share (folder).
+    // We share folders as a multi-protocol OCM share carrying both webdav
+    // (file access) and webapp (launch handoff). The receiver validates each
+    // sent protocol against what we advertise for the resource type, so the
+    // folder resource type must advertise webdav alongside the webapp sending
+    // role; the webdav location mirrors the core `file` resource type.
     $event->registerResourceType(
       Application::WEBAPP_RESOURCE_TYPE,
       ['user'],
-      ['webapp' => (object)[]],
+      ['webdav' => '/public.php/webdav/', 'webapp' => (object)[]],
     );
   }
 }
