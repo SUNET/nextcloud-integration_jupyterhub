@@ -9,9 +9,11 @@ in a process that does not actually verify tokens (e.g. linting, tests)
 does not require the deployment env to be configured.
 """
 
+import json
 import os
 import re
 import time
+import urllib.request
 from typing import Iterable
 from urllib.parse import urlparse
 
@@ -41,12 +43,27 @@ def _trusted_issuer_domains() -> frozenset[str]:
     )
 
 
+def _resolve_jwks_uri(domain: str) -> str:
+    """Fetch the OCM discovery and return the advertised jwksUri."""
+    for discovery_url in (
+        f"https://{domain}/.well-known/ocm",
+        f"https://{domain}/ocm-provider",
+    ):
+        try:
+            with urllib.request.urlopen(discovery_url, timeout=10) as resp:
+                data = json.loads(resp.read())
+            uri = data.get("jwksUri", "")
+            if uri:
+                return uri
+        except Exception:
+            continue
+    raise ValueError(f"could not resolve jwksUri from discovery for {domain}")
+
+
 def get_jwks_client(domain: str, ttl: int | None = None) -> PyJWKClient:
     """Return a cached PyJWKClient for `domain`, refreshing it past `ttl` seconds.
 
-    `ttl` defaults to `OCM_JWKS_TTL` (300s). The cache is per-process — fine for
-    a single hub or managed-service subprocess; multi-process operators should
-    front it with a real HTTP cache instead of bumping `ttl`.
+    The JWKS URL is resolved from the peer's OCM discovery `jwksUri` field.
     """
     if ttl is None:
         ttl = int(os.environ.get("OCM_JWKS_TTL", "300"))
@@ -54,7 +71,8 @@ def get_jwks_client(domain: str, ttl: int | None = None) -> PyJWKClient:
     cached = _jwks_clients.get(domain)
     if cached and now - cached[1] < ttl:
         return cached[0]
-    client = PyJWKClient(f"https://{domain}/.well-known/jwks.json", cache_keys=True)
+    jwks_uri = _resolve_jwks_uri(domain)
+    client = PyJWKClient(jwks_uri, cache_keys=True)
     _jwks_clients[domain] = (client, now)
     return client
 
