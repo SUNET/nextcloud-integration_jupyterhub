@@ -52,7 +52,6 @@ REQUIRED_COVERED = (
     "@target-uri",
     "content-digest",
     "content-length",
-    "date",
 )
 
 
@@ -413,7 +412,7 @@ def verify_signature_primitive(
 def verify_ocm_signature(
     handler: RequestHandler, body: bytes, sender_domain: str
 ) -> None:
-    """Verify the request's "ocm"-labeled RFC 9421 signature against
+    """Verify the request's RFC 9421 signature carrying tag="ocm" against
     sender_domain's JWKS."""
     sig_input_hdr = handler.request.headers.get("Signature-Input")
     sig_hdr = handler.request.headers.get("Signature")
@@ -428,21 +427,32 @@ def verify_ocm_signature(
     except Exception as e:
         raise HTTPError(401, f"malformed signature header: {e}")
 
-    if "ocm" not in sig_input_dict or "ocm" not in sig_dict:
-        raise HTTPError(401, 'no "ocm"-labeled signature')
+    # The OCM signature is identified by its integrity-protected
+    # tag="ocm" parameter (RFC 9421 §2.3), not by its dictionary label.
+    tagged = [
+        label
+        for label, entry in sig_input_dict.items()
+        if dict(entry.params).get("tag") == "ocm"
+    ]
+    if not tagged:
+        raise HTTPError(401, 'no signature carrying tag="ocm"')
+    if len(tagged) > 1:
+        raise HTTPError(401, 'multiple signatures carrying tag="ocm"')
+    ocm_label = tagged[0]
 
-    if sig_input_hdr.count("ocm=") > 1 or sig_hdr.count("ocm=") > 1:
-        raise HTTPError(401, 'multiple "ocm" signatures present')
+    if ocm_label not in sig_dict:
+        raise HTTPError(401, "Signature-Input has no matching Signature entry")
 
-    inner_list_item = sig_input_dict["ocm"]
+    if sig_input_hdr.count(f"{ocm_label}=") > 1 or sig_hdr.count(f"{ocm_label}=") > 1:
+        raise HTTPError(401, f'multiple "{ocm_label}" entries in signature headers')
+
+    inner_list_item = sig_input_dict[ocm_label]
     covered = [item.value for item in inner_list_item]
     params = dict(inner_list_item.params)
 
     keyid = params.get("keyid")
     alg = params.get("alg")
     created = params.get("created")
-    # `alg` is optional per RFC 9421 §3.3.7 (Nextcloud omits it by default);
-    # the verifier resolves the algorithm from the JWK.
     if not keyid or created is None:
         raise HTTPError(401, "signature params must include keyid and created")
 
@@ -480,14 +490,11 @@ def verify_ocm_signature(
     jwk = get_jwk_by_kid(sender_domain, str(jwk_kid))
     if jwk is None:
         raise HTTPError(401, f"kid {jwk_kid} not found in {sender_domain} JWKS")
-    if alg:
-        native_alg = normalize_alg(str(alg))
-        if jwk.algorithm_name and normalize_alg(jwk.algorithm_name) != native_alg:
-            raise HTTPError(401, "algorithm sources disagree")
-    elif jwk.algorithm_name:
-        native_alg = normalize_alg(jwk.algorithm_name)
-    else:
-        raise HTTPError(401, "no alg param and JWK has no algorithm")
+    if not jwk.algorithm_name:
+        raise HTTPError(401, "JWK must carry an alg parameter")
+    native_alg = normalize_alg(jwk.algorithm_name)
+    if alg and normalize_alg(str(alg)) != native_alg:
+        raise HTTPError(401, "signature alg does not match JWK alg")
 
     sig_params_line = str(inner_list_item).strip()
 
@@ -514,7 +521,7 @@ def verify_ocm_signature(
         sig_params_line=sig_params_line,
     )
 
-    sig_value = sig_dict["ocm"].value
+    sig_value = sig_dict[ocm_label].value
     if not isinstance(sig_value, (bytes, bytearray)):
         raise HTTPError(401, "signature value must be a byte sequence")
 
