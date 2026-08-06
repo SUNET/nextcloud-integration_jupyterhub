@@ -213,12 +213,6 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
   }
 
   #[\Override]
-  public function resolveSenderIdentity(array $body): ?string
-  {
-    return $this->inner->resolveSenderIdentity($body);
-  }
-
-  #[\Override]
   public function sendNotification($url, ICloudFederationNotification $notification)
   {
     return $this->inner->sendNotification($url, $notification);
