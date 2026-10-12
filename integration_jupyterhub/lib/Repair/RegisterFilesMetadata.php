@@ -30,28 +30,25 @@ use OCP\Migration\IRepairStep;
  * loads app config — the NC docs explicitly say not to call it during
  * app boot.
  */
-class RegisterFilesMetadata implements IRepairStep
-{
-  public const KEY = 'jupyter-has-notebook';
+class RegisterFilesMetadata implements IRepairStep {
+	public const KEY = 'jupyter-has-notebook';
 
-  public function __construct(
-    private IFilesMetadataManager $metadataManager,
-  ) {
-  }
+	public function __construct(
+		private IFilesMetadataManager $metadataManager,
+	) {
+	}
 
-  public function getName(): string
-  {
-    return 'Register integration_jupyterhub files metadata key';
-  }
+	public function getName(): string {
+		return 'Register integration_jupyterhub files metadata key';
+	}
 
-  public function run(IOutput $output): void
-  {
-    $this->metadataManager->initMetadata(
-      self::KEY,
-      IMetadataValueWrapper::TYPE_BOOL,
-      indexed: false,
-      editPermission: IMetadataValueWrapper::EDIT_FORBIDDEN,
-    );
-    $output->info(sprintf('Registered files metadata key %s for app %s', self::KEY, Application::APP_ID));
-  }
+	public function run(IOutput $output): void {
+		$this->metadataManager->initMetadata(
+			self::KEY,
+			IMetadataValueWrapper::TYPE_BOOL,
+			indexed: false,
+			editPermission: IMetadataValueWrapper::EDIT_FORBIDDEN,
+		);
+		$output->info(sprintf('Registered files metadata key %s for app %s', self::KEY, Application::APP_ID));
+	}
 }

@@ -1,0 +1,37 @@
+{
+  "enabled": true,
+  "apiVersion": "1.4.0",
+  "endPoint": "https://eosc.cernbox.cern.ch/ocm",
+  "provider": "CERNBox",
+  "resourceTypes": [
+    {
+      "name": "file",
+      "shareTypes": ["user"],
+      "protocols": {
+        "webapp": {},
+        "webapp-receive": {"targets": ["blank"]},
+        "webdav": "/remote.php/dav/ocm",
+        "webdav-receive": {"uri": "absolute"}
+      }
+    },
+    {
+      "name": "folder",
+      "shareTypes": ["user"],
+      "protocols": {
+        "webapp": {},
+        "webapp-receive": {"targets": ["blank"]},
+        "webdav": "/remote.php/dav/ocm",
+        "webdav-receive": {"uri": "absolute"}
+      }
+    },
+    {
+      "name": "ro-crate",
+      "shareTypes": ["user"],
+      "protocols": {"embedded-receive": {}}
+    }
+  ],
+  "capabilities": ["invites", "protocol-object", "invite-wayf", "exchange-token"],
+  "criteria": ["must-invite"],
+  "inviteAcceptDialog": "https://eosc.cernbox.cern.ch/open-cloud-mesh/accept-invite",
+  "tokenEndPoint": "https://eosc.cernbox.cern.ch/ocm/token"
+}

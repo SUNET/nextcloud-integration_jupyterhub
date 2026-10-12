@@ -13,53 +13,49 @@ use OCP\AppFramework\Services\IInitialState;
 use OCP\IConfig;
 use OCP\Settings\ISettings;
 
-class AdminSettings implements ISettings
-{
-  public function __construct(
-    private IInitialState $initialStateService,
-    private IConfig $config,
-  ) {
-  }
+class AdminSettings implements ISettings {
+	public function __construct(
+		private IInitialState $initialStateService,
+		private IConfig $config,
+	) {
+	}
 
-  /**
-   * @return TemplateResponse
-   */
-  public function getForm(): TemplateResponse
-  {
-    $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
-    $webappSharingEnabled = $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes';
-    $allowedTargetsRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_allowed_targets', '');
-    $allowedTargets = WebappCapabilityDiscovery::normaliseTargets(
-      $allowedTargetsRaw === '' ? [] : explode(',', $allowedTargetsRaw),
-    );
-    // Unset config = every supported target allowed (matches the
-    // sender's fallback) so the checkboxes start fully ticked.
-    if ($allowedTargets === []) {
-      $allowedTargets = WebappCapabilityDiscovery::ALL_TARGETS;
-    }
-    $accessTokenTtl = (int)$this->config->getAppValue(Application::APP_ID, 'ocm_access_token_ttl', '3600');
-    $mediaTypesRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_media_types', '');
-    $mediaTypes = WebappCapabilityDiscovery::normaliseMediaTypes(
-      $mediaTypesRaw === '' ? [] : explode(',', $mediaTypesRaw),
-    );
-    if ($mediaTypes === []) {
-      $mediaTypes = WebappCapabilityDiscovery::DEFAULT_MEDIA_TYPES;
-    }
-    $this->initialStateService->provideInitialState('jupyter_url', $jupyterUrl);
-    $this->initialStateService->provideInitialState('webapp_sharing_enabled', $webappSharingEnabled);
-    $this->initialStateService->provideInitialState('webapp_allowed_targets', $allowedTargets);
-    $this->initialStateService->provideInitialState('webapp_media_types', $mediaTypes);
-    $this->initialStateService->provideInitialState('ocm_access_token_ttl', $accessTokenTtl);
-    return new TemplateResponse(Application::APP_ID, 'adminSettings');
-  }
+	/**
+	 * @return TemplateResponse
+	 */
+	public function getForm(): TemplateResponse {
+		$jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
+		$webappSharingEnabled = $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes';
+		$allowedTargetsRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_allowed_targets', '');
+		$allowedTargets = WebappCapabilityDiscovery::normaliseTargets(
+			$allowedTargetsRaw === '' ? [] : explode(',', $allowedTargetsRaw),
+		);
+		// Unset config = every supported target allowed (matches the
+		// sender's fallback) so the checkboxes start fully ticked.
+		if ($allowedTargets === []) {
+			$allowedTargets = WebappCapabilityDiscovery::ALL_TARGETS;
+		}
+		$accessTokenTtl = (int)$this->config->getAppValue(Application::APP_ID, 'ocm_access_token_ttl', '3600');
+		$mediaTypesRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_media_types', '');
+		$mediaTypes = WebappCapabilityDiscovery::normaliseMediaTypes(
+			$mediaTypesRaw === '' ? [] : explode(',', $mediaTypesRaw),
+		);
+		if ($mediaTypes === []) {
+			$mediaTypes = WebappCapabilityDiscovery::DEFAULT_MEDIA_TYPES;
+		}
+		$this->initialStateService->provideInitialState('jupyter_url', $jupyterUrl);
+		$this->initialStateService->provideInitialState('webapp_sharing_enabled', $webappSharingEnabled);
+		$this->initialStateService->provideInitialState('webapp_allowed_targets', $allowedTargets);
+		$this->initialStateService->provideInitialState('webapp_media_types', $mediaTypes);
+		$this->initialStateService->provideInitialState('ocm_access_token_ttl', $accessTokenTtl);
+		return new TemplateResponse(Application::APP_ID, 'adminSettings');
+	}
 
-  public function getSection(): string
-  {
-    return 'additional';
-  }
+	public function getSection(): string {
+		return 'additional';
+	}
 
-  public function getPriority(): int
-  {
-    return 20;
-  }
+	public function getPriority(): int {
+		return 20;
+	}
 }

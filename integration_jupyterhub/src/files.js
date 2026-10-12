@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import '@nextcloud/dialogs/style.css'
 import { registerWebappFileAction } from './files/registerWebappFileAction.js'
 import { registerWebappOpenAction } from './files/registerWebappOpenAction.js'
+
+import '@nextcloud/dialogs/style.css'
 
 registerWebappFileAction()
 registerWebappOpenAction()

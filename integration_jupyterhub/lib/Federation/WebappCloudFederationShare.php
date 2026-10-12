@@ -38,91 +38,90 @@ use OCA\Jupyter\AppInfo\Application;
  *
  * See https://github.com/cs3org/OCM-API/blob/develop/work/webapps/webapp-sharing.md
  */
-class WebappCloudFederationShare extends CloudFederationShare
-{
-  public const TARGET_IFRAME = 'iframe';
-  // New window/tab or full-page redirect.
-  public const TARGET_BLANK = 'blank';
+class WebappCloudFederationShare extends CloudFederationShare {
+	public const TARGET_IFRAME = WebappCapabilityDiscovery::TARGET_IFRAME;
+	// New window/tab or full-page redirect.
+	public const TARGET_BLANK = WebappCapabilityDiscovery::TARGET_BLANK;
 
-  public function __construct(
-    string $shareWith = '',
-    string $name = '',
-    string $description = '',
-    string $providerId = '',
-    string $owner = '',
-    string $ownerDisplayName = '',
-    string $sharedBy = '',
-    string $sharedByDisplayName = '',
-    string $shareType = 'user',
-  ) {
-    parent::__construct(
-      $shareWith,
-      $name,
-      $description,
-      $providerId,
-      $owner,
-      $ownerDisplayName,
-      $sharedBy,
-      $sharedByDisplayName,
-      $shareType,
-      Application::WEBAPP_RESOURCE_TYPE,
-    );
-    // Protocol is intentionally not initialised here. Callers must
-    // invoke setWebappShare() before the share is sent — that single
-    // call writes the full multi-protocol envelope via setProtocol().
-  }
+	public function __construct(
+		string $shareWith = '',
+		string $name = '',
+		string $description = '',
+		string $providerId = '',
+		string $owner = '',
+		string $ownerDisplayName = '',
+		string $sharedBy = '',
+		string $sharedByDisplayName = '',
+		string $shareType = 'user',
+	) {
+		parent::__construct(
+			$shareWith,
+			$name,
+			$description,
+			$providerId,
+			$owner,
+			$ownerDisplayName,
+			$sharedBy,
+			$sharedByDisplayName,
+			$shareType,
+			Application::WEBAPP_RESOURCE_TYPE,
+		);
+		// Protocol is intentionally not initialised here. Callers must
+		// invoke setWebappShare() before the share is sent — that single
+		// call writes the full multi-protocol envelope via setProtocol().
+	}
 
-  /**
-   * Build the multi-protocol envelope. One sharedSecret covers both
-   * webdav and webapp per the OCM webapp-sharing draft.
-   */
-  public function setWebappShare(
-    string $webdavUri,
-    string $webappUri,
-    string $sharedSecret,
-    array|string $target,
-    array $permissions = ['read'],
-    ?string $appName = null,
-    ?string $appIconHint = null,
-    ?array $mediaTypes = null,
-    bool $mustExchangeToken = true,
-  ): void {
-    // Requirements must agree across all protocols in the payload.
-    $requirements = $mustExchangeToken ? ['must-exchange-token'] : [];
+	/**
+	 * Build the multi-protocol envelope. One sharedSecret covers both
+	 * webdav and webapp per the OCM webapp-sharing draft.
+	 */
+	public function setWebappShare(
+		string $webdavUri,
+		string $webappUri,
+		string $sharedSecret,
+		array|string $target,
+		array $permissions = ['read'],
+		?string $appName = null,
+		?string $appIconHint = null,
+		?array $mediaTypes = null,
+		bool $mustExchangeToken = true,
+	): void {
+		// Requirements must agree across all protocols in the payload.
+		$requirements = $mustExchangeToken ? ['must-exchange-token'] : [];
 
-    $webdav = [
-      'uri' => $webdavUri,
-      'sharedSecret' => $sharedSecret,
-      'permissions' => $permissions,
-    ];
-    if ($requirements !== []) {
-      $webdav['requirements'] = $requirements;
-    }
+		$webdav = [
+			'uri' => $webdavUri,
+			'sharedSecret' => $sharedSecret,
+			'permissions' => $permissions,
+		];
+		if ($requirements !== []) {
+			$webdav['requirements'] = $requirements;
+		}
 
-    $webapp = [
-      'uri' => $webappUri,
-      'sharedSecret' => $sharedSecret,
-      'targets' => is_array($target) ? array_values($target) : [$target],
-      'permissions' => $permissions,
-    ];
-    if ($requirements !== []) {
-      $webapp['requirements'] = $requirements;
-    }
-    if ($appName !== null) {
-      $webapp['appName'] = $appName;
-    }
-    if ($appIconHint !== null) {
-      $webapp['appIconHint'] = $appIconHint;
-    }
-    if ($mediaTypes !== null && $mediaTypes !== []) {
-      $webapp['mediaTypes'] = array_values($mediaTypes);
-    }
+		$webapp = [
+			'uri' => $webappUri,
+			'sharedSecret' => $sharedSecret,
+			'targets' => is_array($target) ? array_values($target) : [$target],
+			'permissions' => $permissions,
+		];
+		if ($requirements !== []) {
+			$webapp['requirements'] = $requirements;
+		}
+		if ($appName !== null) {
+			$webapp['appName'] = $appName;
+		}
+		if ($appIconHint !== null) {
+			$webapp['appIconHint'] = $appIconHint;
+		}
+		if ($mediaTypes !== null && $mediaTypes !== []) {
+			$webapp['mediaTypes'] = array_values($mediaTypes);
+		}
 
-    $this->setProtocol([
-      'name' => 'multi',
-      'webdav' => $webdav,
-      'webapp' => $webapp,
-    ]);
-  }
+		$this->setProtocol([
+			'name' => 'multi',
+			'webdav' => $webdav,
+			'webapp' => $webapp,
+		]);
+	}
 
 }

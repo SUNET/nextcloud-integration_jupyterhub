@@ -24,131 +24,128 @@ use Psr\Log\LoggerInterface;
  * hub keys the share by (sender domain, providerId), which the
  * access token's client_id claim must equal (OCM-API#370).
  */
-class OCMHubBackChannel
-{
-  public function __construct(
-    private IClientService $clientService,
-    private ISignatureManager $signatureManager,
-    private OCMSignatoryManager $signatoryManager,
-    private ICloudIdManager $cloudIdManager,
-    private IConfig $config,
-    private LoggerInterface $logger,
-  ) {
-  }
+class OCMHubBackChannel {
+	public function __construct(
+		private IClientService $clientService,
+		private ISignatureManager $signatureManager,
+		private OCMSignatoryManager $signatoryManager,
+		private ICloudIdManager $cloudIdManager,
+		private IConfig $config,
+		private LoggerInterface $logger,
+	) {
+	}
 
-  /**
-   * @throws OCMBackChannelException if the hub does not acknowledge the
-   *   envelope; the caller must then abort the outbound OCM share.
-   */
-  public function push(WebappCloudFederationShare $share): void
-  {
-    $hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
-    if ($hubBase === '') {
-      // No hub configured at all — the webapp share cannot function, so
-      // this is a hard failure rather than a silent skip.
-      throw new OCMBackChannelException('JupyterHub URL is not configured');
-    }
+	/**
+	 * @throws OCMBackChannelException if the hub does not acknowledge the
+	 *                                 envelope; the caller must then abort the outbound OCM share.
+	 */
+	public function push(WebappCloudFederationShare $share): void {
+		$hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
+		if ($hubBase === '') {
+			// No hub configured at all — the webapp share cannot function, so
+			// this is a hard failure rather than a silent skip.
+			throw new OCMBackChannelException('JupyterHub URL is not configured');
+		}
 
-    // OCM-IP: every sharedSecret field, in every protocol entry, MUST be
-    // removed — the hub never receives any OCM secret.
-    $protocol = $share->getProtocol();
-    foreach ($protocol as $entry => $value) {
-      if (is_array($value) && array_key_exists('sharedSecret', $value)) {
-        unset($protocol[$entry]['sharedSecret']);
-      }
-    }
+		// OCM-IP: every sharedSecret field, in every protocol entry, MUST be
+		// removed — the hub never receives any OCM secret.
+		$protocol = $share->getProtocol();
+		foreach ($protocol as $entry => $value) {
+			if (is_array($value) && array_key_exists('sharedSecret', $value)) {
+				unset($protocol[$entry]['sharedSecret']);
+			}
+		}
 
-    $payload = [
-      'shareWith' => $share->getShareWith(),
-      'name' => $share->getResourceName(),
-      'description' => $share->getDescription(),
-      'providerId' => $share->getProviderId(),
-      'owner' => $share->getOwner(),
-      'ownerDisplayName' => $share->getOwnerDisplayName(),
-      'sender' => $share->getSharedBy() ?: $share->getOwner(),
-      'senderDisplayName' => $share->getSharedByDisplayName() ?: $share->getOwnerDisplayName(),
-      'shareType' => $share->getShareType(),
-      'resourceType' => $share->getResourceType(),
-      'protocol' => $protocol,
-    ];
-    $body = (string)json_encode($payload, JSON_UNESCAPED_SLASHES);
-    $url = $hubBase . '/services/ocm/shares';
+		$payload = [
+			'shareWith' => $share->getShareWith(),
+			'name' => $share->getResourceName(),
+			'description' => $share->getDescription(),
+			'providerId' => $share->getProviderId(),
+			'owner' => $share->getOwner(),
+			'ownerDisplayName' => $share->getOwnerDisplayName(),
+			'sender' => $share->getSharedBy() ?: $share->getOwner(),
+			'senderDisplayName' => $share->getSharedByDisplayName() ?: $share->getOwnerDisplayName(),
+			'shareType' => $share->getShareType(),
+			'resourceType' => $share->getResourceType(),
+			'protocol' => $protocol,
+		];
+		$body = (string)json_encode($payload, JSON_UNESCAPED_SLASHES);
+		$url = $hubBase . '/services/ocm/shares';
 
-    try {
-      $signed = $this->signatureManager->signOutgoingRequestIClientPayload(
-        new Rfc9421SignatoryManager($this->signatoryManager),
-        ['body' => $body, 'headers' => ['Content-Type' => 'application/json']],
-        'POST',
-        $url,
-      );
-      $response = $this->clientService->newClient()->post($url, [
-        'headers' => $signed['headers'],
-        'body' => $signed['body'],
-        'timeout' => 15,
-      ]);
-    } catch (OCMBackChannelException $e) {
-      throw $e;
-    } catch (\Throwable $e) {
-      $this->logger->warning('OCM back channel push failed', ['exception' => $e, 'url' => $url]);
-      throw new OCMBackChannelException('Back-channel push to JupyterHub failed', 0, $e);
-    }
+		try {
+			$signed = $this->signatureManager->signOutgoingRequestIClientPayload(
+				new Rfc9421SignatoryManager($this->signatoryManager),
+				['body' => $body, 'headers' => ['Content-Type' => 'application/json']],
+				'POST',
+				$url,
+			);
+			$response = $this->clientService->newClient()->post($url, [
+				'headers' => $signed['headers'],
+				'body' => $signed['body'],
+				'timeout' => 15,
+			]);
+		} catch (OCMBackChannelException $e) {
+			throw $e;
+		} catch (\Throwable $e) {
+			$this->logger->warning('OCM back channel push failed', ['exception' => $e, 'url' => $url]);
+			throw new OCMBackChannelException('Back-channel push to JupyterHub failed', 0, $e);
+		}
 
-    $status = $response->getStatusCode();
-    if ($status < 200 || $status >= 300) {
-      $this->logger->warning('OCM back channel push rejected', [
-        'url' => $url,
-        'status' => $status,
-        'body' => substr((string)$response->getBody(), 0, 500),
-      ]);
-      throw new OCMBackChannelException(sprintf('JupyterHub rejected the share (HTTP %d)', $status));
-    }
+		$status = $response->getStatusCode();
+		if ($status < 200 || $status >= 300) {
+			$this->logger->warning('OCM back channel push rejected', [
+				'url' => $url,
+				'status' => $status,
+				'body' => substr((string)$response->getBody(), 0, 500),
+			]);
+			throw new OCMBackChannelException(sprintf('JupyterHub rejected the share (HTTP %d)', $status));
+		}
 
-    $this->logger->debug('OCM back channel pushed', [
-      'url' => $url,
-      'status' => $status,
-      'providerId' => $share->getProviderId(),
-    ]);
-  }
+		$this->logger->debug('OCM back channel pushed', [
+			'url' => $url,
+			'status' => $status,
+			'providerId' => $share->getProviderId(),
+		]);
+	}
 
-  /**
-   * Share Revocation Request (OCM-IP): tell the hub to stop serving the
-   * share and reap the notebook server it spawned. Best-effort: unlike
-   * push() a failure must never block the unshare, so everything here only
-   * logs. The hub matches the share by (sender, providerId) and is
-   * idempotent, so a non-webapp share simply gets "gone".
-   */
-  public function revoke(IShare $share): void
-  {
-    $hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
-    if ($hubBase === '') {
-      return;
-    }
+	/**
+	 * Share Revocation Request (OCM-IP): tell the hub to stop serving the
+	 * share and reap the notebook server it spawned. Best-effort: unlike
+	 * push() a failure must never block the unshare, so everything here only
+	 * logs. The hub matches the share by (sender, providerId) and is
+	 * idempotent, so a non-webapp share simply gets "gone".
+	 */
+	public function revoke(IShare $share): void {
+		$hubBase = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'jupyter_url', ''), '/');
+		if ($hubBase === '') {
+			return;
+		}
 
-    // providerId = the federated share id, the same key push() registered
-    // the share under.
-    $providerId = (string)$share->getId();
+		// providerId = the federated share id, the same key push() registered
+		// the share under.
+		$providerId = (string)$share->getId();
 
-    $sender = $this->cloudIdManager->getCloudId($share->getShareOwner(), null)->getId();
-    $body = (string)json_encode(['sender' => $sender, 'providerId' => $providerId], JSON_UNESCAPED_SLASHES);
-    $url = $hubBase . '/services/ocm/revoke';
+		$sender = $this->cloudIdManager->getCloudId($share->getShareOwner(), null)->getId();
+		$body = (string)json_encode(['sender' => $sender, 'providerId' => $providerId], JSON_UNESCAPED_SLASHES);
+		$url = $hubBase . '/services/ocm/revoke';
 
-    try {
-      $signed = $this->signatureManager->signOutgoingRequestIClientPayload(
-        new Rfc9421SignatoryManager($this->signatoryManager),
-        ['body' => $body, 'headers' => ['Content-Type' => 'application/json']],
-        'POST',
-        $url,
-      );
-      $this->clientService->newClient()->post($url, [
-        'headers' => $signed['headers'],
-        'body' => $signed['body'],
-        'timeout' => 10,
-      ]);
-    } catch (\Throwable $e) {
-      $this->logger->info('OCM hub revocation failed for providerId {pid}: {msg}', [
-        'pid' => $providerId,
-        'msg' => $e->getMessage(),
-      ]);
-    }
-  }
+		try {
+			$signed = $this->signatureManager->signOutgoingRequestIClientPayload(
+				new Rfc9421SignatoryManager($this->signatoryManager),
+				['body' => $body, 'headers' => ['Content-Type' => 'application/json']],
+				'POST',
+				$url,
+			);
+			$this->clientService->newClient()->post($url, [
+				'headers' => $signed['headers'],
+				'body' => $signed['body'],
+				'timeout' => 10,
+			]);
+		} catch (\Throwable $e) {
+			$this->logger->info('OCM hub revocation failed for providerId {pid}: {msg}', [
+				'pid' => $providerId,
+				'msg' => $e->getMessage(),
+			]);
+		}
+	}
 }

@@ -3,7 +3,7 @@ Upstream-Name: Jupyter
 Upstream-Contact: Micke Nordin <kano@sunet.se>
 Source: https://github.com/nextcloud/profiler
 
-Files: integration_jupyterhub/package-lock.json integration_jupyterhub/package.json integration_jupyterhub/composer.json integration_jupyterhub/composer.lock screenshots/*.png
+Files: integration_jupyterhub/package-lock.json integration_jupyterhub/package.json integration_jupyterhub/composer.json integration_jupyterhub/composer.lock integration_jupyterhub/tests/fixtures/*.json screenshots/*.png
 Copyright: Micke Nordin <kano@sunet.se>
 License: AGPL-3.0-or-later
 

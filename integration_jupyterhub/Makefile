@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 app_name=integration_jupyterhub
-get_version = $(shell  grep /version appinfo/info.xml | sed 's/.*\([0-9]\.[0-9]\.[0-9]\).*/\1/')
+get_version = $(shell php -r 'echo simplexml_load_file("appinfo/info.xml")->version;')
 cert_dir=$(HOME)/.nextcloud/certificates
 project_dir=$(CURDIR)
 build_dir=$(project_dir)/build/artifacts
@@ -11,6 +11,7 @@ build_tools_dir=$(project_dir)/build/tools
 sign_dir=$(build_dir)/sign
 version := $(call get_version)
 composer = $(shell which composer)
+npm ?= npm
 
 all: appstore
 release: appstore
@@ -63,38 +64,23 @@ appstore: sign
 clean:
 	rm -rf $(build_dir)
 
-package: clean build
-	mkdir -p $(sign_dir)
-	rsync -a \
-	--exclude=/build \
-	--exclude=/docs \
-	--exclude=/translationfiles \
-	--exclude=.tx \
-	--exclude=/tests \
-	--exclude=.git \
-	--exclude=.github \
-	--exclude=/l10n/l10n.pl \
-	--exclude=/CONTRIBUTING.md \
-	--exclude=/issue_template.md \
-	--exclude=.gitattributes \
-	--exclude=.gitignore \
-	--exclude=.scrutinizer.yml \
-	--exclude=.travis.yml \
-	--exclude=/Makefile \
-	--exclude=.drone.yml \
-	$(project_dir)/ $(sign_dir)/$(app_name)
+.PHONY: package
+package: build
+	mkdir -p $(build_dir)
 	tar -czf $(build_dir)/$(app_name)-$(version).tar.gz \
-		-C $(sign_dir) $(app_name)
+		--transform='s,^,$(app_name)/,' \
+		-C $(project_dir) appinfo img js lib templates $(wildcard css l10n) \
+		-C $(project_dir)/.. LICENSES
 
 
 # Fetches the PHP and JS dependencies and compiles the JS.
 .PHONY: build
 build:
 ifneq (,$(wildcard $(project_dir)/composer.json))
-	make composer
+	$(MAKE) composer
 endif
 ifneq (,$(wildcard $(project_dir)/package.json))
-	make npm
+	$(MAKE) npm
 endif
 
 # Installs and updates the composer dependencies.
@@ -113,8 +99,8 @@ endif
 # Installs npm dependencies
 .PHONY: npm
 npm:
-	cd $(project_dir) && npm install
-	cd $(project_dir) && npm run build
+	$(npm) ci --engine-strict --strict-peer-deps --no-audit --no-fund
+	$(npm) run build
 
 # Same as clean but also removes dependencies installed by composer and npm
 .PHONY: distclean
@@ -124,5 +110,4 @@ distclean: clean
 
 .PHONY: test
 test: composer
-	$(project_dir)/vendor/phpunit/phpunit/phpunit -c $(project_dir)/phpunit.xml
-	$(project_dir)/vendor/phpunit/phpunit/phpunit -c $(project_dir)/phpunit.integration.xml
+	composer run test

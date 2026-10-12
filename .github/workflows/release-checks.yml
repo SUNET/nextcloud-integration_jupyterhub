@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Release checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - stable*
+
+permissions:
+  contents: read
+
+jobs:
+  php-unit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+        working-directory: integration_jupyterhub
+      - run: composer run test
+        working-directory: integration_jupyterhub
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integration_jupyterhub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: integration_jupyterhub/package-lock.json
+      - run: npm ci --engine-strict --strict-peer-deps --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run stylelint
+      - run: npm test
+      - run: npm run build
+
+  hub-unit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.13']
+        jupyterhub: ['>=5,<6', '>=6,<7']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install ./hub 'jupyterhub${{ matrix.jupyterhub }}'
+      - run: python -m unittest discover -s hub/tests -v

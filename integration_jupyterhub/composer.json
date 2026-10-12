@@ -3,6 +3,9 @@
   "description": "Integrate JupyterHub into Nextcloud",
   "type": "project",
   "license": "AGPL-3.0-or-later",
+  "require": {
+    "php": ">=8.3"
+  },
   "autoload": {
     "psr-4": {
       "OCA\\Jupyter\\": "lib/"
@@ -15,11 +18,21 @@
     }
   ],
   "require-dev": {
-    "nextcloud/coding-standard": "^1.0"
+    "nextcloud/coding-standard": "^1.5",
+    "nextcloud/ocp": "^35.0.1",
+    "phpunit/phpunit": "^12.0"
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "OCA\\Jupyter\\Tests\\": "tests/",
+      "OCP\\": "vendor/nextcloud/ocp/OCP/",
+      "NCU\\": "vendor/nextcloud/ocp/NCU/"
+    }
   },
   "scripts": {
-    "lint": "find . -name \\*.php -not -path './vendor/*' -print0 | xargs -0 -n1 php -l",
-    "cs:check": "php-cs-fixer fix --dry-run --diff",
-    "cs:fix": "php-cs-fixer fix"
+    "lint": "find appinfo lib templates tests -name \\*.php -print0 | xargs -0 -n1 php -l",
+    "cs:check": "php-cs-fixer fix --config=../.php_cs-fixer.dist.php --dry-run --diff",
+    "cs:fix": "php-cs-fixer fix --config=../.php_cs-fixer.dist.php",
+    "test": "phpunit --configuration tests/phpunit.xml"
   }
 }

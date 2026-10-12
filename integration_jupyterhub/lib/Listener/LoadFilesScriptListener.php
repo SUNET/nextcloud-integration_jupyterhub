@@ -19,20 +19,19 @@ use OCP\Util;
  *
  * @implements IEventListener<LoadAdditionalScriptsEvent>
  */
-class LoadFilesScriptListener implements IEventListener
-{
-  public function __construct(private IConfig $config)
-  {
-  }
+class LoadFilesScriptListener implements IEventListener {
+	public function __construct(
+		private IConfig $config,
+	) {
+	}
 
-  public function handle(Event $event): void
-  {
-    if (!($event instanceof LoadAdditionalScriptsEvent)) {
-      return;
-    }
-    if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
-      return;
-    }
-    Util::addScript(Application::APP_ID, Application::APP_ID . '-files');
-  }
+	public function handle(Event $event): void {
+		if (!($event instanceof LoadAdditionalScriptsEvent)) {
+			return;
+		}
+		if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
+			return;
+		}
+		Util::addScript(Application::APP_ID, Application::APP_ID . '-files');
+	}
 }

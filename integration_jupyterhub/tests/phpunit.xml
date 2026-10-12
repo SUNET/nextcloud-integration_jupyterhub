@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<phpunit bootstrap="../vendor/autoload.php" colors="true" cacheDirectory="../build/phpunit-cache">
+  <testsuites>
+    <testsuite name="unit">
+      <directory>Unit</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>

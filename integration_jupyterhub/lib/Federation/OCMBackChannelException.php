@@ -11,6 +11,5 @@ namespace OCA\Jupyter\Federation;
  * webapp share must not be delivered to the recipient OCM server without
  * the hub first acknowledging the share envelope, so this aborts the send.
  */
-class OCMBackChannelException extends \RuntimeException
-{
+class OCMBackChannelException extends \RuntimeException {
 }

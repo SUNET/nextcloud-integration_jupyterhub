@@ -18,49 +18,43 @@ use Psr\Log\LoggerInterface;
  * without firing ShareDeletedEvent, so this is the only hook for that path.
  * Every other call is a straight delegation.
  */
-class FileShareDeclineReaper implements ICloudFederationProvider
-{
-  public function __construct(
-    private ICloudFederationProvider $inner,
-    private OCMHubBackChannel $hubBackChannel,
-    private LoggerInterface $logger,
-  ) {
-  }
+class FileShareDeclineReaper implements ICloudFederationProvider {
+	public function __construct(
+		private ICloudFederationProvider $inner,
+		private OCMHubBackChannel $hubBackChannel,
+		private LoggerInterface $logger,
+	) {
+	}
 
-  public function notificationReceived($notificationType, $providerId, array $notification): array
-  {
-    if ($notificationType === 'SHARE_DECLINED') {
-      // Resolve the share before inner removes its row.
-      $this->reap((string)$providerId);
-    }
-    return $this->inner->notificationReceived($notificationType, $providerId, $notification);
-  }
+	public function notificationReceived($notificationType, $providerId, array $notification): array {
+		if ($notificationType === 'SHARE_DECLINED') {
+			// Resolve the share before inner removes its row.
+			$this->reap((string)$providerId);
+		}
+		return $this->inner->notificationReceived($notificationType, $providerId, $notification);
+	}
 
-  private function reap(string $providerId): void
-  {
-    try {
-      $share = \OCP\Server::get(FederatedShareProvider::class)->getShareById($providerId);
-      $this->hubBackChannel->revoke($share);
-    } catch (\Throwable $e) {
-      $this->logger->debug('Decline reap skipped for share {id}: {msg}', [
-        'id' => $providerId,
-        'msg' => $e->getMessage(),
-      ]);
-    }
-  }
+	private function reap(string $providerId): void {
+		try {
+			$share = \OCP\Server::get(FederatedShareProvider::class)->getShareById($providerId);
+			$this->hubBackChannel->revoke($share);
+		} catch (\Throwable $e) {
+			$this->logger->debug('Decline reap skipped for share {id}: {msg}', [
+				'id' => $providerId,
+				'msg' => $e->getMessage(),
+			]);
+		}
+	}
 
-  public function getShareType()
-  {
-    return $this->inner->getShareType();
-  }
+	public function getShareType() {
+		return $this->inner->getShareType();
+	}
 
-  public function shareReceived(ICloudFederationShare $share)
-  {
-    return $this->inner->shareReceived($share);
-  }
+	public function shareReceived(ICloudFederationShare $share) {
+		return $this->inner->shareReceived($share);
+	}
 
-  public function getSupportedShareTypes()
-  {
-    return $this->inner->getSupportedShareTypes();
-  }
+	public function getSupportedShareTypes() {
+		return $this->inner->getSupportedShareTypes();
+	}
 }

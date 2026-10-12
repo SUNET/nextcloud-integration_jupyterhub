@@ -48,185 +48,172 @@ use Psr\Log\LoggerInterface;
  * in globally; every method that isn't `sendShare`/`sendCloudShare` is
  * a straight delegation to the wrapped instance.
  */
-class CloudFederationProviderManagerDecorator implements ICloudFederationProviderManager
-{
-  public function __construct(
-    private CloudFederationProviderManager $inner,
-    private WebappShareIntent $intent,
-    private IURLGenerator $urlGenerator,
-    private IConfig $config,
-    private OCMHubBackChannel $hubBackChannel,
-    private LoggerInterface $logger,
-  ) {
-  }
+class CloudFederationProviderManagerDecorator implements ICloudFederationProviderManager {
+	public function __construct(
+		private CloudFederationProviderManager $inner,
+		private WebappShareIntent $intent,
+		private IURLGenerator $urlGenerator,
+		private IConfig $config,
+		private OCMHubBackChannel $hubBackChannel,
+		private LoggerInterface $logger,
+	) {
+	}
 
-  #[\Override]
-  public function sendCloudShare(ICloudFederationShare $share): IResponse
-  {
-    return $this->inner->sendCloudShare($this->maybeRewrite($share));
-  }
+	#[\Override]
+	public function sendCloudShare(ICloudFederationShare $share): IResponse {
+		return $this->inner->sendCloudShare($this->maybeRewrite($share));
+	}
 
-  /**
-   * @return mixed
-   * @deprecated Mirrors the deprecated method on the inner manager; NC's
-   *             federatedfilesharing still calls this for the initial
-   *             share send so we must keep it functional.
-   */
-  #[\Override]
-  public function sendShare(ICloudFederationShare $share)
-  {
-    return $this->inner->sendShare($this->maybeRewrite($share));
-  }
+	/**
+	 * @return mixed
+	 * @deprecated Mirrors the deprecated method on the inner manager; NC's
+	 *             federatedfilesharing still calls this for the initial
+	 *             share send so we must keep it functional.
+	 */
+	#[\Override]
+	public function sendShare(ICloudFederationShare $share) {
+		return $this->inner->sendShare($this->maybeRewrite($share));
+	}
 
-  /**
-   * If the share's recipient matches a pending webapp intent, return a
-   * new {@see WebappCloudFederationShare} reflecting the same
-   * recipient/owner data but with multi-protocol payload. Otherwise
-   * return the original share unchanged.
-   */
-  private function maybeRewrite(ICloudFederationShare $share): ICloudFederationShare
-  {
-    if ($share->getResourceType() !== 'file') {
-      return $share;
-    }
-    if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
-      return $share;
-    }
-    $intent = $this->intent->pickup($share->getShareWith());
-    if ($intent === null || $intent['targets'] === []) {
-      return $share;
-    }
-    $targets = $intent['targets'];
-    $permissions = $intent['permissions'] === [] ? ['read'] : $intent['permissions'];
+	/**
+	 * If the share's recipient matches a pending webapp intent, return a
+	 * new {@see WebappCloudFederationShare} reflecting the same
+	 * recipient/owner data but with multi-protocol payload. Otherwise
+	 * return the original share unchanged.
+	 */
+	private function maybeRewrite(ICloudFederationShare $share): ICloudFederationShare {
+		if ($share->getResourceType() !== 'file') {
+			return $share;
+		}
+		if ($this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') !== 'yes') {
+			return $share;
+		}
+		$intent = $this->intent->pickup($share->getShareWith());
+		if ($intent === null || $intent['targets'] === []) {
+			return $share;
+		}
+		$targets = $intent['targets'];
+		$permissions = $intent['permissions'] === [] ? ['read'] : $intent['permissions'];
 
-    $token = $this->extractWebdavToken($share->getProtocol());
-    if ($token === '') {
-      $this->logger->warning('Webapp share intent matched but no webdav token in outgoing payload; passing through unchanged');
-      return $share;
-    }
+		$token = $this->extractWebdavToken($share->getProtocol());
+		if ($token === '') {
+			$this->logger->warning('Webapp share intent matched but no webdav token in outgoing payload; passing through unchanged');
+			return $share;
+		}
 
-    $multi = new WebappCloudFederationShare(
-      shareWith: $share->getShareWith(),
-      name: $share->getResourceName(),
-      description: $share->getDescription(),
-      providerId: $share->getProviderId(),
-      owner: $share->getOwner(),
-      ownerDisplayName: $share->getOwnerDisplayName(),
-      sharedBy: $share->getSharedBy(),
-      sharedByDisplayName: $share->getSharedByDisplayName(),
-      shareType: $share->getShareType(),
-    );
-    $webappUri = $this->buildHubOpenerUri();
-    if ($webappUri === '') {
-      $this->logger->warning('jupyter_url is not configured; cannot build webapp URI, passing share through unchanged');
-      return $share;
-    }
-    $mediaTypesRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_media_types', '');
-    $mediaTypes = WebappCapabilityDiscovery::normaliseMediaTypes(
-      $mediaTypesRaw === '' ? [] : explode(',', $mediaTypesRaw),
-    );
-    if ($mediaTypes === []) {
-      $mediaTypes = WebappCapabilityDiscovery::DEFAULT_MEDIA_TYPES;
-    }
+		$multi = new WebappCloudFederationShare(
+			shareWith: $share->getShareWith(),
+			name: $share->getResourceName(),
+			description: $share->getDescription(),
+			providerId: $share->getProviderId(),
+			owner: $share->getOwner(),
+			ownerDisplayName: $share->getOwnerDisplayName(),
+			sharedBy: $share->getSharedBy(),
+			sharedByDisplayName: $share->getSharedByDisplayName(),
+			shareType: $share->getShareType(),
+		);
+		$webappUri = $this->buildHubOpenerUri();
+		if ($webappUri === '') {
+			$this->logger->warning('jupyter_url is not configured; cannot build webapp URI, passing share through unchanged');
+			return $share;
+		}
+		$mediaTypesRaw = $this->config->getAppValue(Application::APP_ID, 'webapp_media_types', '');
+		$mediaTypes = WebappCapabilityDiscovery::normaliseMediaTypes(
+			$mediaTypesRaw === '' ? [] : explode(',', $mediaTypesRaw),
+		);
+		if ($mediaTypes === []) {
+			$mediaTypes = WebappCapabilityDiscovery::DEFAULT_MEDIA_TYPES;
+		}
 
-    $multi->setWebappShare(
-      webdavUri: $this->urlGenerator->getAbsoluteURL('/public.php/webdav/'),
-      webappUri: $webappUri,
-      sharedSecret: $token,
-      target: $targets,
-      permissions: $permissions,
-      appName: 'Jupyter',
-      appIconHint: 'application/vnd.jupyter',
-      mediaTypes: $mediaTypes,
-      mustExchangeToken: true,
-    );
+		$multi->setWebappShare(
+			webdavUri: $this->urlGenerator->getAbsoluteURL('/public.php/webdav/'),
+			webappUri: $webappUri,
+			sharedSecret: $token,
+			target: $targets,
+			permissions: $permissions,
+			appName: 'Jupyter',
+			appIconHint: 'application/vnd.jupyter',
+			mediaTypes: $mediaTypes,
+			mustExchangeToken: true,
+		);
 
-    $this->logger->info('Rewrote OCM share to {recipient} into multi-protocol webapp share', [
-      'recipient' => $share->getShareWith(),
-    ]);
-    $this->hubBackChannel->push($multi);
-    return $multi;
-  }
+		$this->logger->info('Rewrote OCM share to {recipient} into multi-protocol webapp share', [
+			'recipient' => $share->getShareWith(),
+		]);
+		$this->hubBackChannel->push($multi);
+		return $multi;
+	}
 
-  /**
-   * NC's CloudFederationShare puts the webdav token at
-   * `protocol.options.sharedSecret` in the single-protocol shape.
-   *
-   * @param array<mixed> $protocol
-   */
-  private function extractWebdavToken(array $protocol): string
-  {
-    if (is_array($protocol['options'] ?? null) && is_string($protocol['options']['sharedSecret'] ?? null)) {
-      return $protocol['options']['sharedSecret'];
-    }
-    if (is_array($protocol['webdav'] ?? null) && is_string($protocol['webdav']['sharedSecret'] ?? null)) {
-      return $protocol['webdav']['sharedSecret'];
-    }
-    return '';
-  }
+	/**
+	 * NC's CloudFederationShare puts the webdav token at
+	 * `protocol.options.sharedSecret` in the single-protocol shape.
+	 *
+	 * @param array<mixed> $protocol
+	 */
+	private function extractWebdavToken(array $protocol): string {
+		if (is_array($protocol['options'] ?? null) && is_string($protocol['options']['sharedSecret'] ?? null)) {
+			return $protocol['options']['sharedSecret'];
+		}
+		if (is_array($protocol['webdav'] ?? null) && is_string($protocol['webdav']['sharedSecret'] ?? null)) {
+			return $protocol['webdav']['sharedSecret'];
+		}
+		return '';
+	}
 
-  /**
-   * The webapp URI advertised to recipients points at this app's
-   * configured JupyterHub's OCM open endpoint. Recipients run the
-   * companion ocmremotewebapp app, which form-POSTs the exchanged
-   * access_token there to launch the share.
-   */
-  private function buildHubOpenerUri(): string
-  {
-    $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url', '');
-    if ($jupyterUrl === '') {
-      return '';
-    }
-    return rtrim($jupyterUrl, '/') . '/services/ocm/open';
-  }
+	/**
+	 * The webapp URI advertised to recipients points at this app's
+	 * configured JupyterHub's OCM open endpoint. Recipients run the
+	 * companion ocmremotewebapp app, which form-POSTs the exchanged
+	 * access_token there to launch the share.
+	 */
+	private function buildHubOpenerUri(): string {
+		$jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url', '');
+		if ($jupyterUrl === '') {
+			return '';
+		}
+		return rtrim($jupyterUrl, '/') . '/services/ocm/open';
+	}
 
-  // ----- straight-through delegations -----
+	// ----- straight-through delegations -----
 
-  #[\Override]
-  public function addCloudFederationProvider($resourceType, $displayName, callable $callback): void
-  {
-    $this->inner->addCloudFederationProvider($resourceType, $displayName, $callback);
-  }
+	#[\Override]
+	public function addCloudFederationProvider($resourceType, $displayName, callable $callback): void {
+		$this->inner->addCloudFederationProvider($resourceType, $displayName, $callback);
+	}
 
-  #[\Override]
-  public function removeCloudFederationProvider($resourceType): void
-  {
-    $this->inner->removeCloudFederationProvider($resourceType);
-  }
+	#[\Override]
+	public function removeCloudFederationProvider($resourceType): void {
+		$this->inner->removeCloudFederationProvider($resourceType);
+	}
 
-  #[\Override]
-  public function getAllCloudFederationProviders(): array
-  {
-    return $this->inner->getAllCloudFederationProviders();
-  }
+	#[\Override]
+	public function getAllCloudFederationProviders(): array {
+		return $this->inner->getAllCloudFederationProviders();
+	}
 
-  #[\Override]
-  public function getCloudFederationProvider($resourceType): ICloudFederationProvider
-  {
-    $provider = $this->inner->getCloudFederationProvider($resourceType);
-    // Wrap the file provider so a recipient's decline reaps the hub server.
-    if ($resourceType === 'file'
-      && $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes') {
-      return new FileShareDeclineReaper($provider, $this->hubBackChannel, $this->logger);
-    }
-    return $provider;
-  }
+	#[\Override]
+	public function getCloudFederationProvider($resourceType): ICloudFederationProvider {
+		$provider = $this->inner->getCloudFederationProvider($resourceType);
+		// Wrap the file provider so a recipient's decline reaps the hub server.
+		if ($resourceType === 'file'
+		  && $this->config->getAppValue(Application::APP_ID, 'webapp_sharing_enabled', 'no') === 'yes') {
+			return new FileShareDeclineReaper($provider, $this->hubBackChannel, $this->logger);
+		}
+		return $provider;
+	}
 
-  #[\Override]
-  public function sendNotification($url, ICloudFederationNotification $notification)
-  {
-    return $this->inner->sendNotification($url, $notification);
-  }
+	#[\Override]
+	public function sendNotification($url, ICloudFederationNotification $notification) {
+		return $this->inner->sendNotification($url, $notification);
+	}
 
-  #[\Override]
-  public function sendCloudNotification(string $url, ICloudFederationNotification $notification): IResponse
-  {
-    return $this->inner->sendCloudNotification($url, $notification);
-  }
+	#[\Override]
+	public function sendCloudNotification(string $url, ICloudFederationNotification $notification): IResponse {
+		return $this->inner->sendCloudNotification($url, $notification);
+	}
 
-  #[\Override]
-  public function isReady(): bool
-  {
-    return $this->inner->isReady();
-  }
+	#[\Override]
+	public function isReady(): bool {
+		return $this->inner->isReady();
+	}
 }

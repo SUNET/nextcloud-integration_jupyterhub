@@ -1,171 +1,169 @@
 <template>
-  <!--
+	<!--
     SPDX-FileCopyrightText: Micke Nordin <kano@sunet.se>
     SPDX-License-Identifier: AGPL-3.0-or-later
     -->
-  <div id="jupyterhub_prefs" class="section">
-    <NcSettingsSection
-      name="JupyterHub"
-      description="JupyterHub integration for Nextcloud."
-      doc-url="https://jupyter.org/hub"
-    >
-      <p>
-        {{ t('integration_jupyterhub', 'Specify the URL where Nextcloud can reach your JupyterHub instance, e.g. https://jupyter.example.com') }}
-      </p>
-      <form @submit.prevent="save">
-        <div class="external-label">
-          <label for="jupyter_url">{{ t('integration_jupyterhub', 'JupyterHub URL') }}</label>
-          <NcTextField
-            id="jupyter_url"
-            v-model="jupyterUrl"
-            :label-outside="true"
-            :placeholder="t('integration_jupyterhub', 'https://jupyter.example.com')"
-          />
-        </div>
+	<div id="jupyterhub_prefs" class="section">
+		<NcSettingsSection
+			name="JupyterHub"
+			description="JupyterHub integration for Nextcloud."
+			docUrl="https://jupyter.org/hub">
+			<p>
+				{{ t('integration_jupyterhub', 'Specify the URL where Nextcloud can reach your JupyterHub instance, e.g. https://jupyter.example.com') }}
+			</p>
+			<form @submit.prevent="save">
+				<div class="external-label">
+					<label for="jupyter_url">{{ t('integration_jupyterhub', 'JupyterHub URL') }}</label>
+					<NcTextField
+						id="jupyter_url"
+						v-model="jupyterUrl"
+						:labelOutside="true"
+						:placeholder="t('integration_jupyterhub', 'https://jupyter.example.com')" />
+				</div>
 
-        <div class="webapp-sharing">
-          <NcCheckboxRadioSwitch
-            v-model="webappSharingEnabled"
-            type="switch"
-          >
-            {{ t('integration_jupyterhub', 'Enable OCM webapp sharing (off by default)') }}
-          </NcCheckboxRadioSwitch>
-          <p class="hint">
-            {{ t('integration_jupyterhub', 'Allows users to share folders containing notebooks with remote users as JupyterHub webapps over OCM.') }}
-          </p>
-        </div>
+				<div class="webapp-sharing">
+					<NcCheckboxRadioSwitch
+						v-model="webappSharingEnabled"
+						type="switch">
+						{{ t('integration_jupyterhub', 'Enable OCM webapp sharing (off by default)') }}
+					</NcCheckboxRadioSwitch>
+					<p class="hint">
+						{{ t('integration_jupyterhub', 'Allows users to share folders containing notebooks with remote users as JupyterHub webapps over OCM.') }}
+					</p>
+				</div>
 
-        <div v-if="webappSharingEnabled" class="webapp-targets">
-          <label class="targets-label">{{ t('integration_jupyterhub', 'Offered view targets') }}</label>
-          <NcCheckboxRadioSwitch
-            v-for="target in allTargets"
-            :key="target.value"
-            v-model="allowedTargets"
-            :value="target.value"
-            name="webapp-allowed-targets"
-            type="checkbox"
-          >
-            {{ target.label }}
-          </NcCheckboxRadioSwitch>
-          <p class="hint">
-            {{ t('integration_jupyterhub', 'Every webapp share offers these targets; the recipient renders whichever it supports. At least one must be selected.') }}
-          </p>
-        </div>
+				<div v-if="webappSharingEnabled" class="webapp-targets">
+					<label class="targets-label">{{ t('integration_jupyterhub', 'Offered view targets') }}</label>
+					<NcCheckboxRadioSwitch
+						v-for="target in allTargets"
+						:key="target.value"
+						v-model="allowedTargets"
+						:value="target.value"
+						name="webapp-allowed-targets"
+						type="checkbox">
+						{{ target.label }}
+					</NcCheckboxRadioSwitch>
+					<p class="hint">
+						{{ t('integration_jupyterhub', 'Every webapp share offers these targets; the recipient renders whichever it supports. At least one must be selected.') }}
+					</p>
+				</div>
 
-        <div v-if="webappSharingEnabled" class="webapp-media-types">
-          <label for="webapp_media_types">{{ t('integration_jupyterhub', 'Advertised media types') }}</label>
-          <NcTextField
-            id="webapp_media_types"
-            v-model="mediaTypesText"
-            :label-outside="true"
-            :placeholder="'application/x-ipynb+json, text/plain, text/markdown, text/x-python'"
-          />
-          <p class="hint">
-            {{ t('integration_jupyterhub', 'Comma-separated MIME types this JupyterHub can handle. Sent to recipients in every webapp share as a hint about what file types the share opens.') }}
-          </p>
-        </div>
+				<div v-if="webappSharingEnabled" class="webapp-media-types">
+					<label for="webapp_media_types">{{ t('integration_jupyterhub', 'Advertised media types') }}</label>
+					<NcTextField
+						id="webapp_media_types"
+						v-model="mediaTypesText"
+						:labelOutside="true"
+						placeholder="application/x-ipynb+json, text/plain, text/markdown, text/x-python" />
+					<p class="hint">
+						{{ t('integration_jupyterhub', 'Comma-separated MIME types this JupyterHub can handle. Sent to recipients in every webapp share as a hint about what file types the share opens.') }}
+					</p>
+				</div>
 
-        <div v-if="webappSharingEnabled" class="access-token-ttl">
-          <label for="ocm_access_token_ttl">{{ t('integration_jupyterhub', 'OCM access-token lifetime (seconds)') }}</label>
-          <NcTextField
-            id="ocm_access_token_ttl"
-            v-model="accessTokenTtl"
-            type="number"
-            :label-outside="true"
-            :placeholder="'3600'"
-          />
-          <p class="hint">
-            {{ t('integration_jupyterhub', 'How long a launched notebook session stays authorised before the share must be re-opened. Applied per share when it is created. Default 3600 (1 hour); allowed 300–86400.') }}
-          </p>
-        </div>
+				<div v-if="webappSharingEnabled" class="access-token-ttl">
+					<label for="ocm_access_token_ttl">{{ t('integration_jupyterhub', 'OCM access-token lifetime (seconds)') }}</label>
+					<NcTextField
+						id="ocm_access_token_ttl"
+						v-model="accessTokenTtl"
+						type="number"
+						:labelOutside="true"
+						placeholder="3600" />
+					<p class="hint">
+						{{ t('integration_jupyterhub', 'How long a launched notebook session stays authorised before the share must be re-opened. Applied per share when it is created. Default 3600 (1 hour); allowed 300–86400.') }}
+					</p>
+				</div>
 
-        <NcButton
-          :wide="true"
-          @click="save"
-        >
-          <template #icon>
-            <Check :size="20" />
-          </template>
-          {{ t('integration_jupyterhub', 'Save') }}
-        </NcButton>
-      </form>
-    </NcSettingsSection>
-  </div>
+				<NcButton
+					:wide="true"
+					@click="save">
+					<template #icon>
+						<Check :size="20" />
+					</template>
+					{{ t('integration_jupyterhub', 'Save') }}
+				</NcButton>
+			</form>
+		</NcSettingsSection>
+	</div>
 </template>
 
 <script>
-import Check from 'vue-material-design-icons/Check.vue'
-import { NcButton, NcCheckboxRadioSwitch, NcSettingsSection, NcTextField } from '@nextcloud/vue'
-import { loadState } from '@nextcloud/initial-state'
 import axios from '@nextcloud/axios'
+import { showError, showSuccess } from '@nextcloud/dialogs'
+import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
-import { showSuccess, showError } from '@nextcloud/dialogs'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
+import Check from 'vue-material-design-icons/Check.vue'
+import logger from '../logger.js'
 
 export default {
-  name: 'AdminSettings',
+	name: 'AdminSettings',
 
-  components: {
-    Check,
-    NcButton,
-    NcCheckboxRadioSwitch,
-    NcSettingsSection,
-    NcTextField,
-  },
+	components: {
+		Check,
+		NcButton,
+		NcCheckboxRadioSwitch,
+		NcSettingsSection,
+		NcTextField,
+	},
 
-  data() {
-    return {
-      jupyterUrl: loadState('integration_jupyterhub', 'jupyter_url', ''),
-      webappSharingEnabled: loadState('integration_jupyterhub', 'webapp_sharing_enabled', false),
-      allowedTargets: loadState('integration_jupyterhub', 'webapp_allowed_targets', ['iframe', 'blank']),
-      mediaTypesText: loadState('integration_jupyterhub', 'webapp_media_types', [
-        'application/x-ipynb+json',
-        'text/plain',
-        'text/markdown',
-        'text/x-python',
-      ]).join(', '),
-      accessTokenTtl: loadState('integration_jupyterhub', 'ocm_access_token_ttl', 3600),
-    }
-  },
+	data() {
+		return {
+			jupyterUrl: loadState('integration_jupyterhub', 'jupyter_url', ''),
+			webappSharingEnabled: loadState('integration_jupyterhub', 'webapp_sharing_enabled', false),
+			allowedTargets: loadState('integration_jupyterhub', 'webapp_allowed_targets', ['iframe', 'blank']),
+			mediaTypesText: loadState('integration_jupyterhub', 'webapp_media_types', [
+				'application/x-ipynb+json',
+				'text/plain',
+				'text/markdown',
+				'text/x-python',
+			]).join(', '),
 
-  computed: {
-    allTargets() {
-      return [
-        { value: 'iframe', label: t('integration_jupyterhub', 'Embed in Nextcloud (iframe)') },
-        { value: 'blank', label: t('integration_jupyterhub', 'Open in a new window or redirect') },
-      ]
-    },
-  },
+			accessTokenTtl: loadState('integration_jupyterhub', 'ocm_access_token_ttl', 3600),
+		}
+	},
 
-  methods: {
-    async save() {
-      let url = this.jupyterUrl.trim()
-      if (url.endsWith('/')) {
-        url = url.slice(0, -1)
-        this.jupyterUrl = url
-      }
-      if (this.webappSharingEnabled && this.allowedTargets.length === 0) {
-        showError(t('integration_jupyterhub', 'Select at least one view target.'))
-        return
-      }
-      const mediaTypes = this.mediaTypesText
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s !== '')
-      try {
-        await axios.put(generateUrl('/apps/integration_jupyterhub/config'), {
-          jupyter_url: url,
-          webapp_allowed_targets: this.allowedTargets,
-          webapp_media_types: mediaTypes,
-          webapp_sharing_enabled: this.webappSharingEnabled,
-          ocm_access_token_ttl: Number(this.accessTokenTtl) || 3600,
-        })
-        showSuccess(t('integration_jupyterhub', 'JupyterHub settings saved.'))
-      } catch (e) {
-        console.error(e)
-        showError(t('integration_jupyterhub', 'Failed to save JupyterHub settings.'))
-      }
-    },
-  },
+	computed: {
+		allTargets() {
+			return [
+				{ value: 'iframe', label: t('integration_jupyterhub', 'Embed in Nextcloud (iframe)') },
+				{ value: 'blank', label: t('integration_jupyterhub', 'Open in a new window or redirect') },
+			]
+		},
+	},
+
+	methods: {
+		async save() {
+			let url = this.jupyterUrl.trim()
+			if (url.endsWith('/')) {
+				url = url.slice(0, -1)
+				this.jupyterUrl = url
+			}
+			if (this.webappSharingEnabled && this.allowedTargets.length === 0) {
+				showError(t('integration_jupyterhub', 'Select at least one view target.'))
+				return
+			}
+			const mediaTypes = this.mediaTypesText
+				.split(',')
+				.map((s) => s.trim())
+				.filter((s) => s !== '')
+			try {
+				await axios.put(generateUrl('/apps/integration_jupyterhub/config'), {
+					jupyter_url: url,
+					webapp_allowed_targets: this.allowedTargets,
+					webapp_media_types: mediaTypes,
+					webapp_sharing_enabled: this.webappSharingEnabled,
+					ocm_access_token_ttl: Number(this.accessTokenTtl) || 3600,
+				})
+				showSuccess(t('integration_jupyterhub', 'JupyterHub settings saved.'))
+			} catch (e) {
+				logger.error('Failed to save JupyterHub settings', { error: e })
+				showError(t('integration_jupyterhub', 'Failed to save JupyterHub settings.'))
+			}
+		},
+	},
 }
 </script>
 
@@ -173,30 +171,37 @@ export default {
 .webapp-sharing {
   margin: 1em 0;
 }
+
 .webapp-sharing .hint {
   color: var(--color-text-maxcontrast);
   margin-top: 0.25em;
 }
+
 .webapp-targets {
   margin: 1em 0;
 }
+
 .webapp-targets .targets-label {
   display: block;
   font-weight: 600;
   margin-bottom: 0.25em;
 }
+
 .webapp-targets .hint {
   color: var(--color-text-maxcontrast);
   margin-top: 0.25em;
 }
+
 .webapp-media-types {
   margin: 1em 0;
 }
+
 .webapp-media-types label {
   display: block;
   font-weight: 600;
   margin-bottom: 0.25em;
 }
+
 .webapp-media-types .hint {
   color: var(--color-text-maxcontrast);
   margin-top: 0.25em;

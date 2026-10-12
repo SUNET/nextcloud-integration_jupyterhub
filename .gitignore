@@ -8,6 +8,8 @@ integration_jupyterhub/node_modules/
 integration_jupyterhub/build/
 integration_jupyterhub/sign/
 /.php_cs.cache
+integration_jupyterhub/.php-cs-fixer.cache
+hub/dist/
 js/*hot-update.*
 
 # Python bytecode

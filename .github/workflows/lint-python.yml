@@ -36,7 +36,7 @@ jobs:
         run: python -m py_compile $(find hub/src -name '*.py')
 
       - name: isort --check-only
-        run: isort --check-only --diff hub/src hub/example
+        run: isort --check-only --diff hub/src hub/example hub/tests
 
       - name: black --check
-        run: black --check --diff hub/src hub/example
+        run: black --check --diff hub/src hub/example hub/tests

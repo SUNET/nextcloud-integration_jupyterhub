@@ -12,24 +12,22 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IConfig;
 use OCP\IRequest;
 
-class PageController extends Controller
-{
-  public function __construct(
-    IRequest $request,
-    private IConfig $config,
-  ) {
-    parent::__construct(Application::APP_ID, $request);
-  }
+class PageController extends Controller {
+	public function __construct(
+		IRequest $request,
+		private IConfig $config,
+	) {
+		parent::__construct(Application::APP_ID, $request);
+	}
 
-  /**
-   * @NoAdminRequired
-   * @NoCSRFRequired
-   */
-  public function index(): TemplateResponse
-  {
-    $jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
-    return new TemplateResponse(Application::APP_ID, 'main', [
-      'jupyter_url' => $jupyterUrl !== '' ? rtrim($jupyterUrl, '/') . '/hub/home' : '',
-    ]);
-  }
+	/**
+	 * @NoAdminRequired
+	 * @NoCSRFRequired
+	 */
+	public function index(): TemplateResponse {
+		$jupyterUrl = $this->config->getAppValue(Application::APP_ID, 'jupyter_url');
+		return new TemplateResponse(Application::APP_ID, 'main', [
+			'jupyter_url' => $jupyterUrl !== '' ? rtrim($jupyterUrl, '/') . '/hub/home' : '',
+		]);
+	}
 }
