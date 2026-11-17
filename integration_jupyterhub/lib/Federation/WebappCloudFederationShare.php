@@ -25,8 +25,14 @@ use OCA\Jupyter\AppInfo\Application;
  *        "protocol": {
  *          "name":   "multi",
  *          "webdav": { uri, sharedSecret, permissions, requirements? },
- *          "webapp": { uri, sharedSecret, targets, permissions, … }
+ *          "webapp": { uri, sharedSecret, targets, permissions,
+ *                      appIconHint?, apps?: [{name, mediaTypes}] }
  *        }
+ *
+ *    Per OCM-API v08 (cs3org/OCM-API#423) the webapp entry advertises
+ *    the available web applications as an `apps` array of
+ *    {name, mediaTypes} objects, replacing the old `appName` /
+ *    `mediaTypes` fields.
  *
  *    `targets` is the intersection of both ends' caps (blank/iframe).
  *
@@ -74,6 +80,11 @@ class WebappCloudFederationShare extends CloudFederationShare {
 	/**
 	 * Build the multi-protocol envelope. One sharedSecret covers both
 	 * webdav and webapp per the OCM webapp-sharing draft.
+	 *
+	 * @param list<mixed> $apps OCM-API v08 `apps` entries
+	 *                          ({name, mediaTypes}); normalised via
+	 *                          {@see WebappCapabilityDiscovery::normaliseApps()} and emitted
+	 *                          as `webapp.apps` when at least one valid entry survives.
 	 */
 	public function setWebappShare(
 		string $webdavUri,
@@ -81,9 +92,8 @@ class WebappCloudFederationShare extends CloudFederationShare {
 		string $sharedSecret,
 		array|string $target,
 		array $permissions = ['read'],
-		?string $appName = null,
+		?array $apps = null,
 		?string $appIconHint = null,
-		?array $mediaTypes = null,
 		bool $mustExchangeToken = true,
 	): void {
 		// Requirements must agree across all protocols in the payload.
@@ -107,14 +117,12 @@ class WebappCloudFederationShare extends CloudFederationShare {
 		if ($requirements !== []) {
 			$webapp['requirements'] = $requirements;
 		}
-		if ($appName !== null) {
-			$webapp['appName'] = $appName;
+		$cleanApps = WebappCapabilityDiscovery::normaliseApps($apps ?? []);
+		if ($cleanApps !== []) {
+			$webapp['apps'] = $cleanApps;
 		}
 		if ($appIconHint !== null) {
 			$webapp['appIconHint'] = $appIconHint;
-		}
-		if ($mediaTypes !== null && $mediaTypes !== []) {
-			$webapp['mediaTypes'] = array_values($mediaTypes);
 		}
 
 		$this->setProtocol([

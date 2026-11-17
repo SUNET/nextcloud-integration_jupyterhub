@@ -115,4 +115,20 @@ class WebappCapabilityDiscoveryTest extends TestCase {
 			['iframe', 'blank'],
 		));
 	}
+
+	public function testAppsKeepOrderDropInvalidEntriesAndDedupeByName(): void {
+		self::assertSame([
+			['name' => 'HedgeDoc', 'mediaTypes' => ['text/markdown', 'text/html']],
+			['name' => 'Collabora', 'mediaTypes' => ['application/vnd.oasis.opendocument.text']],
+		], WebappCapabilityDiscovery::normaliseApps([
+			['name' => ' HedgeDoc ', 'mediaTypes' => ['text/markdown', 'text/html', '']],
+			['name' => 'Collabora', 'mediaTypes' => ['application/vnd.oasis.opendocument.text']],
+			['name' => 'HedgeDoc', 'mediaTypes' => ['text/plain']], // duplicate name: first wins
+			['name' => ' ', 'mediaTypes' => ['text/plain']], // blank name
+			['name' => 'Broken', 'mediaTypes' => []], // empty mediaTypes
+			['name' => 'Broken2'], // no mediaTypes
+			'not-an-object',
+		]));
+		self::assertSame([], WebappCapabilityDiscovery::normaliseApps([]));
+	}
 }

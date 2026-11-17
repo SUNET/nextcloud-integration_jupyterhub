@@ -166,6 +166,43 @@ class WebappCapabilityDiscovery {
 	}
 
 	/**
+	 * Normalise the OCM-API v08 `apps` wire array (cs3org/OCM-API#423):
+	 * keep entries with a non-empty `name` and a non-empty valid
+	 * `mediaTypes` list, at most one entry per name — the first entry
+	 * for a name wins, since the array order expresses the sender's
+	 * preference (the first app able to handle a media type is the
+	 * default).
+	 *
+	 * @param array<mixed> $apps
+	 * @return list<array{name: string, mediaTypes: list<string>}>
+	 */
+	public static function normaliseApps(array $apps): array {
+		$out = [];
+		$seenNames = [];
+		foreach ($apps as $app) {
+			if (!is_array($app)) {
+				continue;
+			}
+			$name = $app['name'] ?? null;
+			if (!is_string($name)) {
+				continue;
+			}
+			$name = trim($name);
+			if ($name === '' || isset($seenNames[$name])) {
+				continue;
+			}
+			$rawMediaTypes = $app['mediaTypes'] ?? null;
+			$mediaTypes = self::normaliseMediaTypes(is_array($rawMediaTypes) ? $rawMediaTypes : []);
+			if ($mediaTypes === []) {
+				continue;
+			}
+			$seenNames[$name] = true;
+			$out[] = ['name' => $name, 'mediaTypes' => $mediaTypes];
+		}
+		return $out;
+	}
+
+	/**
 	 * @param array<mixed> $targets
 	 * @return list<string>
 	 */

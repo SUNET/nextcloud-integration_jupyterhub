@@ -56,7 +56,7 @@
 						:labelOutside="true"
 						placeholder="application/x-ipynb+json, text/plain, text/markdown, text/x-python" />
 					<p class="hint">
-						{{ t('integration_jupyterhub', 'Comma-separated MIME types this JupyterHub can handle. Sent to recipients in every webapp share as a hint about what file types the share opens.') }}
+						{{ t('integration_jupyterhub', 'Comma-separated MIME types this JupyterHub can handle. Sent to recipients in every webapp share inside the apps list, as the mediaTypes of the "Jupyter" app entry.') }}
 					</p>
 				</div>
 

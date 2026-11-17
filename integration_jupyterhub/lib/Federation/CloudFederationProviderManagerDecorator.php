@@ -131,9 +131,10 @@ class CloudFederationProviderManagerDecorator implements ICloudFederationProvide
 			sharedSecret: $token,
 			target: $targets,
 			permissions: $permissions,
-			appName: 'Jupyter',
+			// OCM-API v08: the single JupyterHub web app is advertised as
+			// one `apps` entry carrying the configured media types.
+			apps: [['name' => 'Jupyter', 'mediaTypes' => $mediaTypes]],
 			appIconHint: 'application/vnd.jupyter',
-			mediaTypes: $mediaTypes,
 			mustExchangeToken: true,
 		);
 
